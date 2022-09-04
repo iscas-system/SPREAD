@@ -16,8 +16,7 @@ from object import SolverEnum
 
 def get_solver(solver_enum: 'SolverEnum') -> 'SolverProtocol':
     return {
-        SolverEnum.MMKP: AssignmentSolver.MMKP,
-        SolverEnum.RoundRobin: AssignmentSolver.round_robin
+        SolverEnum.MMKP: AssignmentSolver.MMKP
     }[solver_enum]
 
 
@@ -142,15 +141,6 @@ class AssignmentSolver:
                 assignment[a].add(t)
 
         return assignment, end - start, cal_profit(task_comp_mem_requirements_and_profits, assignment)
-
-    @staticmethod
-    def round_robin(
-            dist_job_to_tasks: Dict[str, Tuple[str, ...]],
-            GPU_comp_mem_capacity: Dict[str, Tuple[int, int]],
-            task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, Union[int, float]]]) \
-            -> Optional[Optional[Tuple[Dict[str, Set[str]], int, Union[int, float]]]]:
-        # TODO
-        return None
 
 
 def cal_profit(task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, Union[int, float]]],

@@ -6,6 +6,18 @@ GBi = 1024 * 1024 * 1024  # 1024 * 1024 * 1024 B
 CompCapacity = 20
 MemoryUnit = GBi
 
+def to_normalized_memory(real_memory):
+    if real_memory % MemoryUnit == 0:
+        return real_memory // MemoryUnit
+    return (real_memory // MemoryUnit) + 1
+
+def to_real_comp(normalized_comp: int):
+    return normalized_comp * (100 // CompCapacity)
+
+
+def to_normalized_comp(real_comp: int):
+    return real_comp // (100 // CompCapacity)
+
 
 class GPUType(Enum):
     Tesla_T4 = "Tesla_T4"
@@ -33,11 +45,15 @@ class GPUType(Enum):
         }[GPU_type]
 
     @staticmethod
-    def memory(GPU_type: 'GPUType'):
+    def real_memory(GPU_type: 'GPUType'):
         return {
             GPUType.RTX2080_Ti: 11 * GBi,
             GPUType.Tesla_T4: 15 * GBi,
         }[GPU_type]
+
+    @staticmethod
+    def normalized_memory(GPU_type: 'GPUType'):
+        return to_normalized_memory(GPUType.real_memory(GPU_type))
 
     @staticmethod
     def line(GPU_type: 'GPUType'):
@@ -51,6 +67,13 @@ class GPUType(Enum):
         return {
             GPUType.RTX2080_Ti: 'o',
             GPUType.Tesla_T4: '^',
+        }[GPU_type]
+
+    @staticmethod
+    def service_factor(GPU_type: 'GPUType'):
+        return {
+            GPUType.RTX2080_Ti: 2,
+            GPUType.Tesla_T4: 1,
         }[GPU_type]
 
 
@@ -141,3 +164,8 @@ class SolverEnum(Enum):
 
 class ProfitEnum(Enum):
     ComprehensiveUtilization = "ComprehensiveUtilization"
+
+
+class PriorityType(Enum):
+    SRSF = "SRSF"
+    FCFS = "FCFS"

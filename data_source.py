@@ -3,14 +3,14 @@ import os
 import re
 from collections import namedtuple, defaultdict
 from enum import Enum
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 from config import DataSourceConfig, get_config
-from object import GPUType, JobSpec, ModelName
+from object import GPUType, JobSpec, ModelName, to_normalized_memory
 
 StableWarmupStartRatio = 3
 
@@ -185,8 +185,13 @@ class DataSource:
             iteration_throughput = DataSource.iteration_throughput(model_name, batch_size, GPU_type, worker_count,
                                                                    computation_proportion)
             total_iterations = run_time / iteration_throughput
-            job_spec = JobSpec(job_ID=job_ID, model_name=model_name, batch_size=batch_size, submit_time=submit_time,
-                               run_time=run_time, plan_GPU=plan_GPU, total_iterations=total_iterations)
+            job_spec = JobSpec(job_ID=job_ID,
+                               model_name=model_name,
+                               batch_size=batch_size,
+                               submit_time=submit_time,
+                               run_time=run_time,
+                               plan_GPU=plan_GPU,
+                               total_iterations=total_iterations)
             self.job_specs.append(job_spec)
             self.job_specs_dict[job_ID] = job_spec
 
@@ -194,8 +199,9 @@ class DataSource:
         return self.job_specs_dict[job_ID]
 
     @staticmethod
-    def get_job_exec_info(model_name: ModelName, batch_size: int, GPU_type: GPUType, worker_count: int,
-                             computation_proportion: int):
+    def get_exec_info(model_name: ModelName, batch_size: int, GPU_type: GPUType, worker_count: int,
+                      computation_proportion: int):
+        batch_size = batch_size // worker_count
         info = MonoJobExecInfoLoader.extract(mono_job_data[model_name],
                                              GPU_type=GPU_type, batch_size=batch_size,
                                              computation_proportion=computation_proportion, worker_count=worker_count)
@@ -203,7 +209,9 @@ class DataSource:
         return info[0]
 
     @staticmethod
-    def iteration_throughput(model_name: ModelName, batch_size: int, GPU_type: GPUType, worker_count: int,
+    def iteration_throughput(model_name: ModelName,
+                             batch_size: int,
+                             GPU_type: GPUType, worker_count: int,
                              computation_proportion: int):
         batch_size = batch_size // worker_count
         info = MonoJobExecInfoLoader.extract(mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
@@ -236,6 +244,39 @@ class DataSource:
         k = iteration_interval_diff / comp_diff
         iteration_interval = k * (computation_proportion - less_comp)
         return iteration_interval * factor
+
+    def get_job_task_memory(self,
+                            job_ID: str,
+                            worker_count: int) -> Tuple[int, int]:
+        job_spec = self.job_specs_dict[job_ID]
+        info = self.get_exec_info(model_name=job_spec.model_name,
+                           batch_size=job_spec.batch_size,
+                           GPU_type=GPUType.RTX2080_Ti,
+                           worker_count=worker_count,
+                           computation_proportion=100)
+        normalized_memory = to_normalized_memory(info.most_memory_consumption)
+        return info.most_memory_consumption, normalized_memory
+
+    def remain_duration(self,
+                        job_ID: str,
+                        GPU_type: GPUType,
+                        computation_proportion: int,
+                        worker_count: int,
+                        remaining_iterations: float) -> int:
+        iteration_throughput = self.job_iteration_throughput(job_ID, GPU_type, computation_proportion, worker_count)
+        remain_duration = int(remaining_iterations * iteration_throughput)
+        return remain_duration
+
+    def job_iteration_throughput(self, job_ID: str, GPU_type: GPUType, computation_proportion: int, worker_count: int) -> float:
+        job_spec = self.job_specs_dict[job_ID]
+        iteration_throughput = self.iteration_throughput(
+            model_name=job_spec.model_name,
+            batch_size=job_spec.batch_size,
+            GPU_type=GPU_type,
+            worker_count=worker_count,
+            computation_proportion=computation_proportion
+        )
+        return iteration_throughput
 
     @staticmethod
     def plan_gpu_converter(plan_GPU: int):

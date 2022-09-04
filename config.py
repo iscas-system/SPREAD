@@ -73,14 +73,32 @@ class Config:
             "scheduling_interval": 360，
             "schedulers": [
                 {
-                    "name": "MMKP_1",
+                    "name": "MMKP_SRSF",
                     "scheduler_enum": "MMKP",
-                    "config": {}
+                    "config": {
+                        "priority_type": "SRSF"
+                    }
                 },
                 {
-                    "name": "RoundRobin_1",
+                    "name": "MMKP_FCFS",
+                    "scheduler_enum": "MMKP",
+                    "config": {
+                        "priority_type": "FCFS"
+                    }
+                },
+                {
+                    "name": "RoundRobin_SRSF",
                     "scheduler_enum": "RoundRobin",
-                    "config": {}
+                    "config": {
+                        "priority_type": "SRSF"
+                    }
+                },
+                {
+                    "name": "RoundRobin_FCFS",
+                    "scheduler_enum": "RoundRobin",
+                    "config": {
+                        "priority_type": "FCFS"
+                    }
                 },
                 {
                     "name": "BinPacking_1",

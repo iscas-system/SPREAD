@@ -6,7 +6,7 @@ from cluster import Cluster
 from data_source import DataSource
 from model import SnapshotRecordParameters
 from profit import get_profit_calculator
-from object import SchedulerEnum, SolverEnum, ProfitEnum, GPUType, MemoryUnit, CompCapacity
+from object import SchedulerEnum, SolverEnum, ProfitEnum, GPUType, MemoryUnit, CompCapacity, PriorityType
 
 
 class Scheduler(ABC):
@@ -25,14 +25,20 @@ class Scheduler(ABC):
         self.solver_enum: Optional[SolverEnum] = solver_enum
         self.profit_enum: Optional[ProfitEnum] = profit_enum
         self.config: Dict = config
+        self._init_config()
         self.do_plot: bool = config.get("do_plot", True)
+        self.priority_type: PriorityType = PriorityType(self.config.get("priority_type", "FCFS"))
         self.__init_view_data()
+
+    @abc.abstractmethod
+    def _init_config(self):
+        ...
 
     def __init_view_data(self):
         self.GPU_type_to_comp_mem_capacity: Dict[GPUType, Tuple[int, int]] = dict()
         self.GPU_type_to_GPU_IDs: Dict[GPUType, Set[str]] = dict()
         for GPU_type, gs in self.cluster.GPUs.items():
-            comp, mem = CompCapacity, GPUType.memory(GPU_type=GPU_type) // MemoryUnit
+            comp, mem = CompCapacity, GPUType.real_memory(GPU_type=GPU_type) // MemoryUnit
             self.GPU_type_to_comp_mem_capacity[GPU_type] = (comp, mem)
             self.GPU_type_to_GPU_IDs[GPU_type] = {g.GPU_ID for g in gs}
 

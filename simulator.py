@@ -88,7 +88,6 @@ class Simulator:
             do_snapshot_record_plot(session_id=session_id, snapshot_record_parameters=snapshot_record_parameters)
         record.save()
 
-
     def add_preemptive_overheads(self, cluster: Cluster, record: 'PlayRecord', last_assignments: Assignments, curr_assignments: Assignments):
         job_to_overheads = Assignments.preemptive_overheads(self.data_source, last_assignments, curr_assignments)
         record.add_preemptive_overheads(self.now, job_to_overheads)
