@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 import re
 from collections import namedtuple, defaultdict
 from enum import Enum
@@ -154,7 +155,7 @@ class MonoJobExecInfoLoader:
         return sorted(infos, key=lambda info: info.computation_proportion)
 
 
-mono_job_data = MonoJobExecInfoLoader.load_infos("./datas/mono_data")
+mono_job_data = MonoJobExecInfoLoader.load_infos(str(pathlib.Path(__file__).parent / "data" / "mono_data"))
 
 
 class DataSource:
@@ -223,7 +224,7 @@ class DataSource:
         factor = 1.0
         if len(infos) == 0:
             info_base = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size,
-                                                      GPU_type=GPUType.RTX2080_Ti, worker_count=1)
+                                                      GPU_type=GPUType.RTX_2080Ti, worker_count=1)
             info_self = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size,
                                                       GPU_type=GPU_type, worker_count=1)
             assert len(info_base) == 1 and len(info_self) == 1
@@ -251,7 +252,7 @@ class DataSource:
         job_spec = self.job_specs_dict[job_ID]
         info = self.get_exec_info(model_name=job_spec.model_name,
                            batch_size=job_spec.batch_size,
-                           GPU_type=GPUType.RTX2080_Ti,
+                           GPU_type=GPUType.RTX_2080Ti,
                            worker_count=worker_count,
                            computation_proportion=100)
         normalized_memory = to_normalized_memory(info.most_memory_consumption)

@@ -1,5 +1,7 @@
+import re
 from enum import Enum
 from typing import Optional
+
 
 GBi = 1024 * 1024 * 1024  # 1024 * 1024 * 1024 B
 
@@ -21,33 +23,33 @@ def to_normalized_comp(real_comp: int):
 
 class GPUType(Enum):
     Tesla_T4 = "Tesla_T4"
-    RTX2080_Ti = "RTX2080_Ti"
+    RTX_2080Ti = "RTX_2080Ti"
 
     @staticmethod
     def label(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: "RTX 2080Ti",
+            GPUType.RTX_2080Ti: "RTX 2080Ti",
             GPUType.Tesla_T4: "Tesla T4",
         }[GPU_type]
 
     @staticmethod
     def comp_power_label(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: "13.45\nTFLOPS",
+            GPUType.RTX_2080Ti: "13.45\nTFLOPS",
             GPUType.Tesla_T4: "8.14\nTFLOPS",
         }[GPU_type]
 
     @staticmethod
     def mem_label(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: "11 GB",
+            GPUType.RTX_2080Ti: "11 GB",
             GPUType.Tesla_T4: "15 GB",
         }[GPU_type]
 
     @staticmethod
     def real_memory(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: 11 * GBi,
+            GPUType.RTX_2080Ti: 11 * GBi,
             GPUType.Tesla_T4: 15 * GBi,
         }[GPU_type]
 
@@ -58,21 +60,21 @@ class GPUType(Enum):
     @staticmethod
     def line(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: '-',
+            GPUType.RTX_2080Ti: '-',
             GPUType.Tesla_T4: '--',
         }[GPU_type]
 
     @staticmethod
     def marker(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: 'o',
+            GPUType.RTX_2080Ti: 'o',
             GPUType.Tesla_T4: '^',
         }[GPU_type]
 
     @staticmethod
     def service_factor(GPU_type: 'GPUType'):
         return {
-            GPUType.RTX2080_Ti: 2,
+            GPUType.RTX_2080Ti: 2,
             GPUType.Tesla_T4: 1,
         }[GPU_type]
 
@@ -106,7 +108,7 @@ class Job:
         self.completion_time: Optional[int] = completion_time
 
     def __hash__(self):
-        return self.job_ID
+        return hash(self.job_ID)
 
     def __eq__(self, other):
         return self.job_ID == other.job_ID
@@ -119,14 +121,22 @@ class Task:
     def __init__(self, job_ID: str, task_idx: int):
         self.job_ID: str = job_ID
         self.task_idx: int = task_idx
-        self.task_ID = f"{self.job_ID}|{self.task_idx}"
+        self.task_ID = f"{self.job_ID}|task_{self.task_idx}"
 
     @staticmethod
     def task_ID_to_job_ID(task_ID: str) -> str:
         return task_ID.split("|")[0]
 
+    @staticmethod
+    def from_task_ID(task_ID: str) -> 'Task':
+        groups = re.search(r"(.*)\|task_(\d+)", task_ID)
+        assert groups is not None
+        job_ID = groups.group(1)
+        task_idx = groups.group(2)
+        return Task(job_ID=job_ID, task_idx=task_idx)
+
     def __hash__(self):
-        return self.task_ID
+        return hash(self.task_ID)
 
     def __eq__(self, other):
         return self.task_ID == other.task_ID

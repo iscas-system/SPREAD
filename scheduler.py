@@ -61,7 +61,6 @@ class Scheduler(ABC):
             scheduler_name=self.name,
             scheduler_type=self.scheduler_enum,
             solver_type=self.solver_enum,
-            GPU_type_to_comp_mem_capacity=self.GPU_type_to_comp_mem_capacity,
             GPU_type_to_GPU_IDs=self.GPU_type_to_GPU_IDs,
             dist_job_to_tasks=dist_job_to_tasks,
             task_comp_mem_requirements=task_comp_mem_requirements,

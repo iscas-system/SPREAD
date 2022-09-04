@@ -1,12 +1,13 @@
 from collections import defaultdict
 from typing import Dict, List, DefaultDict, Optional, Set, Union, Tuple
 
-from config import ClusterConfig, get_config
-from object import GPU, GPUType, Job, Task
-from data_source import DataSource
-from profit import ProfitCalculator
-
 import numpy as np
+
+from config import ClusterConfig, get_config
+from data_source import DataSource
+from object import GPU, GPUType, Job, Task, CompCapacity
+from profit import ProfitCalculator
+from copy import deepcopy
 
 
 class Cluster:
@@ -14,12 +15,14 @@ class Cluster:
         self.GPUs: DefaultDict[GPUType, List[GPU]] = defaultdict(list)
         self.GPU_IDs: List[str] = list()
         self.GPU_ID_to_GPU: Dict[str, GPU] = dict()
+        self.GPU_ID_to_GPU_Type: Dict[str, GPUType] = dict()
         for GPU_type, count in cluster_config.GPUs:
             for i in range(count):
                 g = GPU(GPU_type, i)
                 self.GPUs[GPU_type].append(g)
                 self.GPU_IDs.append(g.GPU_ID)
                 self.GPU_ID_to_GPU[g.GPU_ID] = g
+                self.GPU_ID_to_GPU_Type[g.GPU_ID] = g.GPU_type
 
         self.assignments: Assignments = Assignments()
         self.jobs: Dict[str, Job] = dict()
@@ -56,21 +59,24 @@ class Cluster:
 
     def calc_profits(self, data_source: DataSource, profit_calculator: ProfitCalculator) -> float:
         total_profit = 0
-        for GPU_ID, job_ID_to_task_assignments in self.assignments.GPU_to_task_assignments:
-            GPU_type = self.get_GPU_by_ID(GPU_ID=GPU_ID).GPU_type
-            p = profit_calculator.calculate_jobs(data_source=data_source, job_IDs=job_ID_to_task_assignments.keys(), GPU_type=GPU_type)
+        for GPU_type, job_ID_to_task_assignments in self.assignments.GPU_type_to_task_assignments:
+            p = profit_calculator.calculate_jobs(data_source=data_source, job_IDs=job_ID_to_task_assignments.keys(),
+                                                 GPU_type=GPU_type)
             total_profit += p
         return total_profit
 
+
 class TaskAssignment:
-    def __init__(self, GPU_type: GPUType, task: Task, comp_proportion: int, memory: int):
+    def __init__(self, GPU_ID: str, GPU_type: GPUType, task: Task, comp_proportion: int, memory: int, over_supplied: int=0):
+        self.GPU_ID: str = GPU_ID
         self.GPU_type: GPUType = GPU_type
         self.task: Task = task
         self.comp_proportion: int = comp_proportion
         self.memory: int = memory
+        self.over_supplied: int = over_supplied
 
     def __hash__(self):
-        return self.task
+        return hash(self.task)
 
     def __eq__(self, other):
         return self.task == other.task
@@ -80,29 +86,29 @@ class TaskAssignment:
 
 
 class Assignments:
-    def __init__(self, GPU_to_task_assignments: Optional[Dict[str, Dict[str, Set[TaskAssignment]]]] = None):
-        if GPU_to_task_assignments is None:
-            GPU_to_task_assignments = dict()
-        self.GPU_to_task_assignments: Dict[str, Dict[str, Set[TaskAssignment]]] = GPU_to_task_assignments
+    def __init__(self, GPU_type_to_task_assignments: Optional[Dict[GPUType, Dict[str, Set[TaskAssignment]]]] = None):
+        if GPU_type_to_task_assignments is None:
+            GPU_type_to_task_assignments = dict()
+        self.GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = GPU_type_to_task_assignments
         self.__init_views()
 
     def __init_views(self):
         self.job_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = dict()
-        for GPU_type, job_ID_task_assignments in self.GPU_to_task_assignments.items():
+        for GPU_type, job_ID_task_assignments in self.GPU_type_to_task_assignments.items():
             for job_ID, task_assignments in job_ID_task_assignments.items():
                 self.job_ID_to_task_assignments[job_ID] = task_assignments
 
     def to_solver_assignments(self) -> Dict[str, Set[str]]:
         d: Dict[str, Set[str]] = defaultdict(set)
-        for g, job_to_task_assignments in self.GPU_to_task_assignments.items():
+        for _, job_to_task_assignments in self.GPU_type_to_task_assignments.items():
             for job, task_assignments in job_to_task_assignments.items():
-                task_IDs_set = {task_assignment.task.task_ID for task_assignment in task_assignments}
-                d[g] += task_IDs_set
+                for task_assignment in task_assignments:
+                    d[task_assignment.GPU_ID].add(task_assignment.task.task_ID)
         return d
 
     def dist_job_to_tasks(self) -> Dict[str, Tuple[str, ...]]:
         dist_job_to_tasks: Dict[str, Tuple[str, ...]] = dict()
-        for g, job_to_task_assignments in self.GPU_to_task_assignments:
+        for _, job_to_task_assignments in self.GPU_type_to_task_assignments.items():
             for job_ID, task_assignments in job_to_task_assignments.items():
                 if len(task_assignments) > 1:
                     dist_job_to_tasks[job_ID] = tuple(
@@ -111,7 +117,7 @@ class Assignments:
 
     def task_comp_mem_requirements(self) -> Dict[str, Tuple[int, int]]:
         requirements: Dict[str, Tuple[int, int]] = dict()
-        for g, job_to_task_assignments in self.GPU_to_task_assignments:
+        for _, job_to_task_assignments in self.GPU_type_to_task_assignments:
             for job_ID, task_assignments in job_to_task_assignments.items():
                 for assignment in task_assignments:
                     assert isinstance(assignment, TaskAssignment)
@@ -129,34 +135,35 @@ class Assignments:
 
     @classmethod
     def from_solver_assigment(cls,
-                              cluster: Cluster,
-                              GPU_type_to_task_comp_mem_requirements_and_profits: Dict[
-                                  GPUType, Dict[str, Tuple[int, int, Union[int, float]]]],
+                              GPU_ID_to_GPU_type: Dict[str, GPUType],
+                              GPU_type_to_task_comp_mem_requirements: Dict[
+                                  GPUType, Dict[str, Tuple[int, int]]],
                               solver_assignments: Dict[str, Set[str]]) -> 'Assignments':
-        GPU_to_task_assignments: Dict[str, Dict[str, Set[TaskAssignment]]] = defaultdict(lambda: defaultdict(set))
-        for GPU_ID, task_ID in solver_assignments:
-            g = cluster.get_GPU_by_ID(GPU_ID)
-            task_comp_mem_requirements_and_profits = GPU_type_to_task_comp_mem_requirements_and_profits[g.GPU_type]
-            comp, mem, _ = task_comp_mem_requirements_and_profits[task_ID]
-            job_ID = Task.task_ID_to_job_ID(task_ID)
-            cluster.get_undone_job(job_ID)
-            task_assignments = GPU_to_task_assignments[GPU_ID][job_ID]
-            assert task_ID not in task_assignments
-            task_assignments.add(task_ID)
-        return Assignments(GPU_to_task_assignments=GPU_to_task_assignments)
+        GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(lambda: defaultdict(set))
+        for GPU_ID, task_IDs in solver_assignments.items():
+            for task_ID in task_IDs:
+                GPU_type = GPU_ID_to_GPU_type[GPU_ID]
+                task_comp_mem_requirements = GPU_type_to_task_comp_mem_requirements[GPU_type]
+                comp, mem = task_comp_mem_requirements[task_ID]
+                job_ID = Task.task_ID_to_job_ID(task_ID)
+                task_assignments = GPU_type_to_task_assignments[GPU_type][job_ID]
+                assert task_ID not in task_assignments
+                task_assignments.add(TaskAssignment(GPU_ID=GPU_ID, GPU_type=GPU_type, task=Task.from_task_ID(task_ID), comp_proportion=comp, memory=mem))
+        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     def job_ID_to_GPU_IDs(self) -> Dict[str, Set[str]]:
         d: Dict[str, Set[str]] = defaultdict(set)
-        for job_ID, task_assignments in self.job_ID_to_task_assignments:
+        for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
             for task_assignment in task_assignments:
-                d[job_ID] = task_assignment.GPU_type
+                d[job_ID].add(task_assignment.GPU_ID)
         return d
 
     @staticmethod
     def preemptive_overheads(data_source: DataSource, assignments_1: 'Assignments', assignments_2: 'Assignments'):
         assignments_1_job_ID_to_GPU_IDs = assignments_1.job_ID_to_GPU_IDs()
         assignments_2_job_ID_to_GPU_IDs = assignments_2.job_ID_to_GPU_IDs()
-        intersected_job_IDs = set(assignments_1_job_ID_to_GPU_IDs.keys()).intersection(assignments_2_job_ID_to_GPU_IDs.keys())
+        intersected_job_IDs = set(assignments_1_job_ID_to_GPU_IDs.keys()).intersection(
+            assignments_2_job_ID_to_GPU_IDs.keys())
         overheads: Dict[str, int] = dict()
         c = get_config()
         for job_ID in intersected_job_IDs:
@@ -168,3 +175,91 @@ class Assignments:
                 overhead = int(1e9 * np.random.uniform(*c.model_configs[job_spec.model_name].preemptive_overhead))
                 overheads[job_ID] = overhead
         return overheads
+
+    def supplement_over_supply(self) -> 'Assignments':
+        dist_jobs: Set[str] = set()
+        job_ID_to_GPU_IDs = self.job_ID_to_GPU_IDs()
+        GPU_ID_to_remaining_comp: DefaultDict[str, int] = defaultdict(lambda :CompCapacity)
+        GPU_ID_to_job_size: DefaultDict[str, int] = defaultdict(lambda :0)
+        job_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = defaultdict(set)
+        job_ID_to_GPU_type: Dict[str, GPUType] = dict()
+        for GPU_type, job_to_task_assignments in self.GPU_type_to_task_assignments.items():
+            for job_ID, task_assignments in job_to_task_assignments.items():
+                job_ID_to_GPU_type[job_ID] = GPU_type
+                if len(task_assignments) > 1:
+                    dist_jobs.add(job_ID)
+                job_ID_to_task_assignments[job_ID] = deepcopy(task_assignments)
+                GPU_IDs = job_ID_to_GPU_IDs[job_ID]
+                comp = next(iter(task_assignments)).comp_proportion
+                for GPU_ID in GPU_IDs:
+                    GPU_ID_to_remaining_comp[GPU_ID] -= comp
+                    GPU_ID_to_job_size[GPU_ID] += 1
+        def supply(inn_job_ID: str):
+            task_assignments_ = job_ID_to_task_assignments[inn_job_ID]
+            least_supply = np.inf
+            for task_assignment in task_assignments_:
+                remaining_comp = GPU_ID_to_remaining_comp[task_assignment.GPU_ID]
+                job_size = GPU_ID_to_job_size[task_assignment.GPU_ID]
+                supply_ = remaining_comp // job_size
+                if supply_ < least_supply:
+                    least_supply = supply_
+            for task_assignment in task_assignments_:
+                task_assignment.over_supplied = least_supply
+                GPU_ID_to_remaining_comp[task_assignment.GPU_ID] -= least_supply
+
+        def remain_supply(inn_job_ID: str):
+            task_assignments_ = job_ID_to_task_assignments[inn_job_ID]
+            least_supply = np.inf
+            for task_assignment in task_assignments_:
+                remaining_comp = GPU_ID_to_remaining_comp[task_assignment.GPU_ID]
+                if remaining_comp < least_supply:
+                    least_supply = remaining_comp
+            for task_assignment in task_assignments_:
+                task_assignment.over_supplied += least_supply
+                GPU_ID_to_remaining_comp[task_assignment.GPU_ID] -= least_supply
+
+        for dist_job in dist_jobs:
+            supply(inn_job_ID=dist_job)
+        for dist_job in dist_jobs:
+            task_assignments = job_ID_to_task_assignments[dist_job]
+            for task_assignment in task_assignments:
+                GPU_ID_to_job_size[task_assignment.GPU_ID] -= 1
+        for job_ID in job_ID_to_task_assignments:
+            if job_ID not in dist_jobs:
+                supply(inn_job_ID=job_ID)
+        for job_ID in job_ID_to_task_assignments:
+            if job_ID not in dist_jobs:
+                remain_supply(inn_job_ID=job_ID)
+        for job_ID in dist_jobs:
+            remain_supply(inn_job_ID=job_ID)
+        GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(dict)
+        for job_ID, task_assignments in job_ID_to_task_assignments.items():
+            GPU_type = job_ID_to_GPU_type[job_ID]
+            GPU_type_to_task_assignments[GPU_type][job_ID] = task_assignments
+        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+
+    def jobs_iteration_throughput(self, data_source: DataSource) -> Dict[str, float]:
+        d: Dict[str, float] = dict()
+        for job_ID in self.job_ID_to_task_assignments:
+            d[job_ID] = self.job_iteration_throughput(data_source=data_source, job_ID=job_ID)
+        return d
+
+    def job_iteration_throughput(self, data_source: DataSource, job_ID: str) -> float:
+        task_assignments = self.job_ID_to_task_assignments[job_ID]
+        assert len(task_assignments) > 0
+        comp_proportion = {task_assignment.comp_proportion + task_assignment.over_supplied for task_assignment in task_assignments}
+        assert len(comp_proportion) == 1
+        comp_proportion = next(iter(comp_proportion))
+        GPU_type = {task_assignment.GPU_type for task_assignment in task_assignments}
+        assert len(GPU_type) == 1
+        GPU_type = next(iter(GPU_type))
+        worker_count = len(task_assignments)
+        job_spec = data_source.get_job_spec(job_ID)
+        return data_source.iteration_throughput(
+            model_name=job_spec.model_name,
+            batch_size=job_spec.batch_size,
+            GPU_type=GPU_type,
+            worker_count=worker_count,
+            computation_proportion=comp_proportion
+        )
+

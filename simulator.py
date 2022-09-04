@@ -136,7 +136,8 @@ class Simulator:
     def pass_to(self, cluster: Cluster, next_time: int):
         duration = next_time - self.now
         job_ID_to_throughput = self.jobs_throughput(cluster=cluster)
-        for job_ID_to_task_assignments in cluster.assignments.GPU_to_task_assignments.values():
+        for job_ID_to_task_assignments in cluster.assignments.GPU_type_to_task_assignments.values():
+            # Dict[str, Set[TaskAssignment]]
             for job_ID in job_ID_to_task_assignments:
                 cluster.ensure_start(job_ID=job_ID, now=self.now)
                 job = cluster.get_undone_job(job_ID=job_ID)
@@ -148,7 +149,8 @@ class Simulator:
     def job_remaining_durations(self, cluster: Cluster) -> Dict[str, int]:
         d: Dict[str, int] = dict()
         job_ID_to_throughput = self.jobs_throughput(cluster=cluster)
-        for job_ID_to_task_assignments in cluster.assignments.GPU_to_task_assignments.values():
+        for job_ID_to_task_assignments in cluster.assignments.GPU_type_to_task_assignments.values():
+            # Dict[str, Set[TaskAssignment]]
             for job_ID in job_ID_to_task_assignments:
                 job = cluster.get_undone_job(job_ID=job_ID)
                 remaining_duration = job.remaining_iterations * job_ID_to_throughput[job_ID]
@@ -156,30 +158,7 @@ class Simulator:
         return d
 
     def jobs_throughput(self, cluster: Cluster) -> Dict[str, float]:
-        d: Dict[str, float] = dict()
-        for job_ID in cluster.assignments.job_ID_to_task_assignments:
-            d[job_ID] = self.job_iteration_throughput(cluster=cluster, job_ID=job_ID)
-        return d
-
-    def job_iteration_throughput(self, cluster: Cluster, job_ID: str):
-        task_assignments = cluster.assignments.job_ID_to_task_assignments[job_ID]
-        assert len(task_assignments) > 0
-        comp_proportion = {task_assignment.comp_proportion for task_assignment in task_assignments}
-        assert len(comp_proportion) == 1
-        comp_proportion = next(iter(comp_proportion))
-        GPU_type = {task_assignment.GPU_type for task_assignment in task_assignments}
-        assert len(GPU_type) == 1
-        GPU_type = next(iter(GPU_type))
-        worker_count = len(task_assignments)
-        job_spec = self.data_source.get_job_spec(job_ID)
-        cluster.get_undone_job(job_ID=job_ID)
-        return self.data_source.iteration_throughput(
-            model_name=job_spec.model_name,
-            batch_size=job_spec.batch_size,
-            GPU_type=GPU_type,
-            worker_count=worker_count,
-            computation_proportion=comp_proportion
-        )
+        return cluster.assignments.jobs_iteration_throughput(data_source=self.data_source)
 
 
 class PlayRecord:
