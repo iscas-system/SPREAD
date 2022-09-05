@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Optional
+from typing import Optional, Dict
 
 
 GBi = 1024 * 1024 * 1024  # 1024 * 1024 * 1024 B
@@ -89,15 +89,37 @@ class ModelName(Enum):
 
 
 class JobSpec:
-    def __init__(self, job_ID: str, model_name: ModelName, batch_size: int, submit_time: int, plan_GPU: int,
-                 run_time: int, total_iterations: float):
+    def __init__(self,
+                 job_ID: str,
+                 model_name: ModelName,
+                 batch_size: int,
+                 submit_time: int,
+                 plan_GPU: int,
+                 run_time: int,
+                 total_iterations: float,
+                 ):
         self.job_ID: str = job_ID
         self.model_name: ModelName = model_name
         self.batch_size: int = batch_size
         self.submit_time: int = submit_time
         self.plan_GPU: int = plan_GPU
+        self.plan_worker_count: int = 1 if plan_GPU <= 100 else plan_GPU // 100
+        self.plan_comp = plan_GPU // (100//CompCapacity)
         self.run_time: int = run_time
         self.total_iterations: float = total_iterations
+
+    def to_dict(self) -> Dict:
+        return {
+            "job_ID": self.job_ID,
+            "model_name": self.model_name,
+            "batch_size": self.batch_size,
+            "submit_time": self.submit_time,
+            "plan_GPU": self.plan_GPU,
+            "plan_worker_count": self.plan_worker_count,
+            "plan_comp": self.plan_comp,
+            "run_time": self.run_time,
+            "total_iterations": self.total_iterations
+        }
 
 
 class Job:
@@ -160,7 +182,7 @@ class GPU:
 
 class SchedulerEnum(Enum):
     MMKP = "MMKP"
-    RR = "RoundRobin"
+    RoundRobin = "RoundRobin"
     BinPacking = "BinPacking"
     Tiresias = "Tiresias"
     Themis = "Themis"
@@ -169,7 +191,6 @@ class SchedulerEnum(Enum):
 
 class SolverEnum(Enum):
     MMKP = "MMKP"
-    RoundRobin = "RoundRobin"
 
 
 class ProfitEnum(Enum):

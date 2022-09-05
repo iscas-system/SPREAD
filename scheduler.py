@@ -1,8 +1,8 @@
 import abc
 from abc import ABC
-from typing import Optional, Dict, Tuple, Set
+from typing import Optional, Dict, Tuple, Set, Any
 
-from cluster import Cluster
+from cluster import Cluster, Assignments
 from data_source import DataSource
 from model import SnapshotRecordParameters
 from profit import get_profit_calculator
@@ -27,7 +27,7 @@ class Scheduler(ABC):
         self.config: Dict = config
         self._init_config()
         self.do_plot: bool = config.get("do_plot", True)
-        self.priority_type: PriorityType = PriorityType(self.config.get("priority_type", "FCFS"))
+        self.priority_type: PriorityType = PriorityType[self.config.get("priority_type", "FCFS")]
         self.__init_view_data()
 
     @abc.abstractmethod
@@ -43,20 +43,22 @@ class Scheduler(ABC):
             self.GPU_type_to_GPU_IDs[GPU_type] = {g.GPU_ID for g in gs}
 
     def build_snapshot_record_parameters(self) -> SnapshotRecordParameters:
-        # RecordParameters(
-        #     scheduler_type: SchedulerEnum
-        #     solver_type: Optional[SolverEnum]
-        #     GPU_type_to_comp_mem_capacity: Dict[GPUType, Tuple[Union[float, int], Union[float, int]]]
-        #     GPU_type_to_GPU_IDs: Dict[GPUType, Set[str]]
-        #     dist_job_to_tasks: Dict[str, Tuple[str, ...]]
-        #     task_comp_mem_requirements: Dict[str, Tuple[int, int]]
-        #     assignments: Dict[str, Set[str]]
-        #     do_plot: bool
-        # )
+        # scheduler_name: str
+        # scheduler_type: SchedulerEnum
+        # solver_type: Optional[SolverEnum]
+        # GPU_type_to_GPU_IDs: Dict[GPUType, Set[str]]
+        # dist_job_to_tasks: Dict[str, Tuple[str, ...]]
+        # task_comp_mem_requirements: Dict[str, Tuple[int, int]]
+        # task_comp_over_supply: Dict[str, int]
+        # assignments: Dict[str, Set[str]]
+        # profit: Union[int, float]
+        # do_plot: Optional[bool]
+
         dist_job_to_tasks: Dict[str, Tuple[str, ...]] = self.cluster.assignments.dist_job_to_tasks()
         task_comp_mem_requirements: Dict[str, Tuple[int, int]] = self.cluster.assignments.task_comp_mem_requirements()
         assignments = self.cluster.assignments.to_solver_assignments()
-
+        task_over_supply, normalized_total_over_supply = self.cluster.assignments.get_task_over_supply()
+        task_comp_lack_supply, normalized_total_lack_supply = self.cluster.assignments.get_task_lack_supply(data_source=self.data_source)
         return SnapshotRecordParameters(
             scheduler_name=self.name,
             scheduler_type=self.scheduler_enum,
@@ -64,17 +66,22 @@ class Scheduler(ABC):
             GPU_type_to_GPU_IDs=self.GPU_type_to_GPU_IDs,
             dist_job_to_tasks=dist_job_to_tasks,
             task_comp_mem_requirements=task_comp_mem_requirements,
+            task_comp_over_supply=task_over_supply,
+            normalized_total_over_supply=normalized_total_over_supply,
+            task_comp_lack_supply=task_comp_lack_supply,
+            normalized_total_lack_supply=normalized_total_lack_supply,
             assignments=assignments,
             profit=self.cluster.calc_profits(data_source=self.data_source, profit_calculator=get_profit_calculator(self.profit_enum)),
             do_plot=self.do_plot
         )
 
     @abc.abstractmethod
-    def do_assign(self, preemptive: bool) -> Tuple[Optional[Tuple[int, ...]], ]:
+    def do_assign(self, preemptive: bool) -> Tuple[Assignments, Optional[Any], ]:
         """
 
         :param preemptive:
         :return:
-            Optional[Tuple[int, ...]]: Solver Overheads
+            Assignments: assignments
+            Optional[Any]: any scheduler reports
         """
         ...

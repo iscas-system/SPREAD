@@ -12,7 +12,7 @@ import pydantic
 from matplotlib.patches import Patch
 
 from cluster import Assignments
-from common import get_fig_dir, get_session_dir
+from common import get_fig_dir, get_json_dir
 from model import *
 from object import CompCapacity
 
@@ -35,7 +35,7 @@ def do_snapshot_record_plot(session_id: str, snapshot_record_parameters: Snapsho
 
     filename = datetime.datetime.now().strftime(
         f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{snapshot_record_parameters.profit}_%Y-%m-%d-%H-%M-%S")
-    json_filepath = os.path.join(get_session_dir(session_id), filename + ".json")
+    json_filepath = os.path.join(get_json_dir(session_id), filename + ".json")
     fig_filepath = os.path.join(get_fig_dir(session_id), filename + ".pdf")
     logging.info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")
     with open(json_filepath, 'w') as f:
@@ -57,7 +57,8 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
         GPU_ID_to_GPU_slot_idx[GPU_ID] = slot_idx
     for GPU_type, GPU_IDs in recorder_parameters.GPU_type_to_GPU_IDs.items():
         for GPU_ID in GPU_IDs:
-            GPU_ID_to_GPU_type[GPU_ID] = GPU_type
+            assert isinstance(GPU_type, str)
+            GPU_ID_to_GPU_type[GPU_ID] = GPUType[GPU_type]
 
     GPU_count = len(GPU_slots)
     fig, ax = plt.subplots(figsize=(10 + GPU_count // 1.5, 8))
@@ -115,6 +116,12 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
         comp_proportion = recorder_parameters.task_comp_over_supply[task_ID] / CompCapacity
         return comp_proportion
 
+    def task_lack_supply(task_ID):
+        if task_ID not in recorder_parameters.task_comp_lack_supply:
+            return 0
+        lack_supply = recorder_parameters.task_comp_lack_supply[task_ID] / CompCapacity
+        return lack_supply
+
     def task_mem(task_ID):
         GPU_ID = task_ID_to_GPU_ID[task_ID]
         GPU_type = GPU_ID_to_GPU_type[GPU_ID]
@@ -125,31 +132,39 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
     task_ID_comp_data = dict()
     task_ID_oversupply_data = dict()
     task_ID_mem_data = dict()
+    task_ID_lack_supply_data = dict()
     for i, task in enumerate(tasks_list):
         GPU_ID = task_ID_to_GPU_ID[task]
         GPU_slot_idx = GPU_ID_to_GPU_slot_idx[GPU_ID]
         task_comp_data = np.zeros(len(GPU_slots))
         task_oversupply_data = np.zeros(len(GPU_slots))
         task_mem_data = np.zeros(len(GPU_slots))
+        task_lack_supply_data = np.zeros(len(GPU_slots))
         task_comp_value = task_comp(task)
         task_oversupply_value = task_oversupply(task)
         task_mem_value = task_mem(task)
+        task_lack_supply_value = task_lack_supply(task)
         task_comp_data[GPU_slot_idx] = task_comp_value
         task_oversupply_data[GPU_slot_idx] = task_oversupply_value
         task_mem_data[GPU_slot_idx] = task_mem_value
+        task_lack_supply_data[GPU_slot_idx] = task_lack_supply_value
         task_ID_comp_data[task] = task_comp_data
         task_ID_oversupply_data[task] = task_oversupply_data
         task_ID_mem_data[task] = task_mem_data
+        task_ID_lack_supply_data[task] = task_lack_supply_data
 
     X = np.arange(len(GPU_slots))
     width = 0.4
+    split_bar_width = 0.01 / 2
 
     hatch = r"-\\"
     oversupply_hatch = r"**"
+    lack_supply_hatch = r"oo"
 
     bottom_comp_data_dict = dict()
     bottom_oversupply_data_dict = dict()
     bottom_mem_data_dict = dict()
+    bottom_lack_supply_data_dict = dict()
 
     def bottom_comp_mem_data():
         bottom_comp_data_ = np.zeros((len(GPU_slots),))
@@ -162,6 +177,12 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
             bottom_mem_data_ += np.array(data)
         return bottom_comp_data_, bottom_mem_data_
 
+    def bottom_lack_supply_data():
+        bottom_comp_data_ = np.zeros((len(GPU_slots),))
+        for _, data in bottom_lack_supply_data_dict.items():
+            bottom_comp_data_ += np.array(data)
+        return bottom_comp_data_
+
     def plot_task(task):
         comp_data = task_ID_comp_data[task]
         oversupply_data = task_ID_oversupply_data[task]
@@ -173,20 +194,20 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
             else:
                 label_list.append("")
         bottom_comp_data_, bottom_mem_data_ = bottom_comp_mem_data()
-        bar1 = ax.bar(X - width / 2, comp_data,
+        bar1 = ax.bar(X - width / 2 - split_bar_width, comp_data,
                       # edgecolor="black",
                       bottom=bottom_comp_data_,
                       color=job_ID_to_color[task_ID_to_job_ID[task]],
                       label=task_ID_to_label[task],
                       hatch=hatch,
                       width=width)
-        ax.bar(X - width / 2, oversupply_data,
+        ax.bar(X - width / 2 - split_bar_width, oversupply_data,
                bottom=np.array(bottom_comp_data_) + np.array(comp_data),
                color=job_ID_to_color[task_ID_to_job_ID[task]],
                label=task_ID_to_label[task],
                hatch=oversupply_hatch,
                width=width)
-        bar2 = ax.bar(X + width / 2, mem_data,
+        bar2 = ax.bar(X + width / 2 + split_bar_width, mem_data,
                       # edgecolor="black",
                       bottom=bottom_mem_data_,
                       color=job_ID_to_color[task_ID_to_job_ID[task]],
@@ -220,7 +241,7 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
         remaining_comp_data.append(remaining_comp)
         remaining_mem_data.append(remaining_mem)
     under_utilized_color = "grey"
-    GPU_comp_bar = ax.bar(X - width / 2,
+    GPU_comp_bar = ax.bar(X - width / 2 - split_bar_width,
                           remaining_comp_data,
                           # edgecolor="black",
                           bottom=bottom_comp_data_,
@@ -228,24 +249,45 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
                           width=width)
     # ax.bar_label(GPU_comp_bar, labels=[GPUType.comp_power_label(GPU_ID_to_GPU_type[GPU_ID]) for GPU_ID in GPU_slots],
     #              label_type="edge", fontsize=14)
-    GPU_mem_bar = ax.bar(X + width / 2,
+    GPU_mem_bar = ax.bar(X + width / 2 + split_bar_width,
                          remaining_mem_data,
                          bottom=bottom_mem_data_,
                          color=under_utilized_color,
                          width=width)
+
     # ax.bar_label(GPU_mem_bar, labels=[GPUType.mem_label(GPU_ID_to_GPU_type[GPU_ID]) for GPU_ID in GPU_slots],
     #              label_type="edge", fontsize=14)
+
+    def plot_lack_supply_task(task):
+        lack_supply_data = task_ID_lack_supply_data[task]
+        bottom_lack_supply_data_ = bottom_lack_supply_data()
+        ax.bar(X - width / 2 - split_bar_width, lack_supply_data,
+               bottom=np.array(bottom_lack_supply_data_) + np.ones_like(bottom_lack_supply_data_),
+               color=job_ID_to_color[task_ID_to_job_ID[task]],
+               label=task_ID_to_label[task],
+               hatch=lack_supply_hatch,
+               width=width)
+
+        bottom_oversupply_data_dict[task] = lack_supply_data
+
+    for task in tasks_list:
+        plot_lack_supply_task(task)
+
     legend_elements = [
         Patch(edgecolor="black", facecolor="white",
-                hatch=hatch,
+              hatch=hatch,
               label='User Requested Resource'),
         Patch(edgecolor="black", facecolor="white",
               hatch=oversupply_hatch,
               label='Over-Supplied Resource'),
+        Patch(edgecolor="black", facecolor="white",
+              hatch=lack_supply_hatch,
+              label='Lack of Supply'),
         Patch(facecolor=under_utilized_color,
-              label='Underutilized'),
+              label='Underutilized')
     ]
     ax.legend(handles=legend_elements, loc=(0.7, 1.05), fontsize=14)
+    ax.bar(X, np.ones(len(GPU_slots)), color="black", width=2*split_bar_width)
 
     ax.spines['top'].set_visible(False)
     ax.spines['left'].set_visible(False)
@@ -256,6 +298,7 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
     fig.tight_layout()
     # fig.show()
     fig.savefig(filepath, dpi=1200, format='pdf', bbox_inches='tight')
+    plt.close(fig)
 
 
 def read_recorder_parameters(filepath: str) -> SnapshotRecordParameters:
@@ -270,7 +313,6 @@ def do_test():
         "dist_job_2": ("job_5|task_1", "job_5|task_2")
     }
     GPU_type_to_comp_mem_capacity = {
-        GPUType.Tesla_T4: (8, 15),
         GPUType.RTX_2080Ti: (13.5, 11)
     }
     task_comp_mem_requirements = {
@@ -287,26 +329,19 @@ def do_test():
         "job_9|task_1": (5, 6),
     }
     GPU_type_to_GPU_IDs = {
-        GPUType.Tesla_T4: {"T4_1", "T4_2", "T4_3", "T4_4"},
-        GPUType.RTX_2080Ti: {"2080Ti_1", "2080Ti_2", "2080Ti_3"}
+        GPUType.RTX_2080Ti: {"2080Ti_1", "2080Ti_2", "2080Ti_3", "2080Ti_4"}
     }
     GPU_ID_to_GPU_type = {
-        "T4_1": GPUType.Tesla_T4,
-        "T4_2": GPUType.Tesla_T4,
-        "T4_3": GPUType.Tesla_T4,
-        "T4_4": GPUType.Tesla_T4,
         "2080Ti_1": GPUType.RTX_2080Ti,
         "2080Ti_2": GPUType.RTX_2080Ti,
         "2080Ti_3": GPUType.RTX_2080Ti,
+        "2080Ti_4": GPUType.RTX_2080Ti,
     }
     assignments: Dict[str, Set[str]] = {
-        "T4_1": {"job_1|task_1", "job_2|task_1"},
-        "T4_2": {"job_1|task_2"},
-        "T4_3": {"job_6|task_1", "job_8|task_1"},
-        "T4_4": {"job_9|task_1"},
         "2080Ti_1": {"job_3|task_1", "job_7|task_1"},
         "2080Ti_2": {"job_4|task_1", "job_5|task_1"},
-        "2080Ti_3": {"job_5|task_2"},
+        "2080Ti_3": {"job_5|task_2", "job_1|task_2"},
+        "2080Ti_4": {"job_1|task_1", "job_8|task_1"},
     }
 
     GPU_type_to_task_comp_mem_requirements = defaultdict(dict)
@@ -318,11 +353,12 @@ def do_test():
                                                             GPU_type_to_task_comp_mem_requirements=GPU_type_to_task_comp_mem_requirements,
                                                             solver_assignments=assignments)
     over_supplied_assignments_wrapped = assignments_wrapped.supplement_over_supply()
-    task_over_supply: Dict[str, int] = dict()
-    for job_ID, task_assignments in over_supplied_assignments_wrapped.job_ID_to_task_assignments.items():
-        for task_assignment in task_assignments:
-            task_over_supply[task_assignment.task.task_ID] = task_assignment.over_supplied
-
+    task_over_supply, normalized_total_over_supply = over_supplied_assignments_wrapped.get_task_over_supply()
+    task_comp_lack_supply, normalized_total_lack_supply = {
+                                                              "job_4|task_1": 4,
+                                                              "job_5|task_1": 2,
+                                                              "job_1|task_2": 2,
+                                                          }, 0.2
     # scheduler_name: str
     #     scheduler_type: SchedulerEnum
     #     solver_type: Optional[SolverEnum]
@@ -341,6 +377,9 @@ def do_test():
         dist_job_to_tasks=dist_job_to_tasks,
         task_comp_mem_requirements=task_comp_mem_requirements,
         task_comp_over_supply=task_over_supply,
+        normalized_total_over_supply=normalized_total_over_supply,
+        task_comp_lack_supply=task_comp_lack_supply,
+        normalized_total_lack_supply=normalized_total_lack_supply,
         assignments=assignments,
         profit=0,
         do_plot=True,

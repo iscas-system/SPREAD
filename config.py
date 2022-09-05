@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import sys
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Set
 
 from object import ModelName, SchedulerEnum, GPUType
 
@@ -11,7 +11,7 @@ class Config:
     """
         {
             "license_path": null,
-            "cluster_config": {
+            "cluster_configs": {
                 "cluster_1": {
                     "GPUs": {
                         "RTX_2080Ti": 4,
@@ -23,10 +23,10 @@ class Config:
                         "RTX_2080Ti": 4,
                         "Tesla_T4": 3
                     },
-                    "enabled_schedulers": ["MMKP", "RoundRobin", "BinPacking", "Tiresias", "Themis", "Optimus"]
+                    "enabled_scheduler_names": ["MMKP", "RoundRobin", "BinPacking", "Tiresias", "Themis", "Optimus"]
                 }
             },
-            "enabled_cluster_config": ["cluster_1", "cluster_2"],
+            "enabled_cluster_configs": ["cluster_1", "cluster_2"],
             "models": {
                 "BertBase": {
                     "batch_sizes": [8, 16, 32, 64, 128],
@@ -58,19 +58,17 @@ class Config:
                     "data_range": [100, 500],
                     "job_count": 300,
                     "submit_at_beginning": false,
-                    "use_all_computation": false,
-                    "enabled_schedulers": ["MMKP", "RoundRobin", "BinPacking"]
+                    "enabled_scheduler_names": ["MMKP", "RoundRobin", "BinPacking"]
                 },
                 "data_source_2": {
                     "data_range": [100, 500],
                     "job_count": 300,
                     "submit_at_beginning": false,
-                    "use_all_computation": true,
-                    "enabled_schedulers": ["MMKP", "Tiresias", "Themis", "Optimus"]
+                    "enabled_scheduler_names": ["MMKP", "Tiresias", "Themis", "Optimus"]
                 }
             },
-            "enabled_data_source_config": ["data_source_1", "data_source_2"],
-            "scheduling_interval": 360，
+            "enabled_data_source_configs": ["data_source_1", "data_source_2"],
+            "default_scheduling_interval": 360，
             "schedulers": [
                 {
                     "name": "MMKP_SRSF",
@@ -115,7 +113,8 @@ class Config:
                     "scheduler_enum": "Tiresias",
                     "config": {}
                 }
-            ]
+            ],
+            "enabled_scheduler_names": ["RoundRobin_FCFS"]
         }
     """
 
@@ -123,6 +122,9 @@ class Config:
         with open(config_path) as c:
             d = json.load(c)
         self.license_path: Optional[str] = d.get("license_path", None)
+        self.using_default_license: bool = d["use_default_license"]
+        self.__init_license()
+        self.enabled_scheduler_names: List[str] = d["enabled_scheduler_names"]
 
         self.data_source_configs: Dict[str, 'DataSourceConfig'] = dict()
         for cn, c in d["data_source_configs"].items():
@@ -130,35 +132,43 @@ class Config:
                 name=cn,
                 submit_table_path=c.get("submit_table_path", "./data/pai_job_submit_table.csv"),
                 data_range=c["data_range"],
+                init_job_data_seed=c["init_job_data_seed"],
                 job_count=c["job_count"],
                 submit_at_beginning=c["submit_at_beginning"],
                 filter_replicas=c.get("filter_replicas", [1]),
-                enabled_schedulers=c["enabled_schedulers"]
+                enabled_scheduler_names=c.get("enabled_schedulers", self.enabled_scheduler_names),
+                enable_plot=c.get("enable_plot", False)
             )
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
         self.model_configs: Dict[ModelName, ModelConfig] = dict()
-        for model_name_str, model_config_dict in d["models"]:
-            self.model_configs[ModelName(model_name_str)] = ModelConfig(
-                model_name=ModelName(model_name_str),
+        for model_name_str, model_config_dict in d["models"].items():
+            self.model_configs[ModelName[model_name_str]] = ModelConfig(
+                model_name=ModelName[model_name_str],
                 batch_sizes=model_config_dict["batch_sizes"],
-                preemptive_overhead=model_config_dict["preemptive_overheads"]
+                preemptive_overhead=model_config_dict["preemptive_overhead"]
             )
         self.cluster_configs: Dict[str, 'ClusterConfig'] = dict()
         for cn, c in d["cluster_configs"].items():
             self.cluster_configs[cn] = ClusterConfig(
                 name=cn,
-                GPUs={GPUType(GPU_type_str): count for GPU_type_str, count in c["GPUs"].items()},
-                enabled_schedulers=[SchedulerEnum(s) for s in d.get("enabled_schedulers", [])]
+                GPUs={GPUType[GPU_type_str]: count for GPU_type_str, count in c["GPUs"].items()},
+                enabled_scheduler_names=c.get("enabled_schedulers", self.enabled_scheduler_names),
+                enable_plot=c.get("enable_plot", False)
             )
-        self.schedulers: List[SchedulerDescription] = list()
-        for sn, sc in d["schedulers"].items():
-            self.schedulers.append(SchedulerDescription(
+        self.enabled_cluster_configs: List[str] = d["enabled_cluster_configs"]
+        self.default_scheduling_preemptive_interval: int = d["default_scheduling_preemptive_interval"]
+        self.schedulers: Dict[str, SchedulerDescription] = dict()
+        for sc in d["schedulers"]:
+            self.schedulers[sc["name"]] = SchedulerDescription(
                 name=sc["name"],
-                scheduler_enum=sc["scheduler_enum"],
+                scheduler_enum=SchedulerEnum[sc["scheduler_enum"]],
                 config=sc["config"]
-            ))
+            )
+        self.enabled_scheduler_names: List[str] = d["enabled_scheduler_names"]
 
     def __init_license(self):
+        if self.using_default_license:
+            return
         GRB_LICENSE_FILE_ENV_KEY = "GRB_LICENSE_FILE"
         if self.license_path is not None:
             if not os.path.exists(self.license_path):
@@ -203,10 +213,12 @@ def get_config(config_path: Optional[str] = None):
 
 
 class ClusterConfig:
-    def __init__(self, name: str, GPUs: Dict[GPUType, int], enabled_schedulers: List[SchedulerEnum]):
+    def __init__(self, name: str, GPUs: Dict[GPUType, int], enabled_scheduler_names: List[str], enable_plot: bool):
         self.name: str = name
         self.GPUs: Dict[GPUType, int] = GPUs
-        self.enabled_schedulers: List[SchedulerEnum] = enabled_schedulers
+        self.GPU_types: Set[GPUType] = set(GPUs.keys())
+        self.enabled_scheduler_names: List[str] = enabled_scheduler_names
+        self.enable_plot: bool = enable_plot
 
 
 class DataSourceConfig:
@@ -214,15 +226,19 @@ class DataSourceConfig:
                  name: str,
                  submit_table_path: str,
                  data_range: Tuple[int, int],
+                 init_job_data_seed: int,
                  job_count: int,
                  submit_at_beginning: bool,
                  filter_replicas: List[int],
-                 enabled_schedulers: List[SchedulerEnum]
+                 enabled_scheduler_names: List[str],
+                 enable_plot: bool
                  ):
         self.name: str = name
         self.submit_table_path: str = submit_table_path
         self.data_range: Tuple[int, int] = data_range
+        self.init_job_data_seed: int = init_job_data_seed
         self.job_count: int = job_count
         self.submit_at_beginning: bool = submit_at_beginning
         self.filter_replicas: List = filter_replicas
-        self.enabled_schedulers: List[SchedulerEnum] = enabled_schedulers
+        self.enabled_scheduler_names: List[str] = enabled_scheduler_names
+        self.enable_plot: bool = enable_plot

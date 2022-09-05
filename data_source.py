@@ -4,7 +4,7 @@ import pathlib
 import re
 from collections import namedtuple, defaultdict
 from enum import Enum
-from typing import List, Dict, Optional, Callable, Tuple
+from typing import List, Dict, Optional, Callable, Tuple, Set
 
 import numpy as np
 import pandas as pd
@@ -74,7 +74,7 @@ class MonoJobExecInfoLoader:
             groups = re.match(pattern, session_id)
             assert groups is not None
             model_name_str = groups.group(1)
-            model_name = ModelName(model_name_str)
+            model_name = ModelName[model_name_str]
             train_or_inference = TrainOrInference(groups.group(2))
             if train_or_inference != TrainOrInference.train:
                 continue
@@ -159,8 +159,12 @@ mono_job_data = MonoJobExecInfoLoader.load_infos(str(pathlib.Path(__file__).pare
 
 
 class DataSource:
-    def __init__(self, data_source_config: DataSourceConfig):
+    def __init__(self,
+                 data_source_config: DataSourceConfig,
+                 enabled_GPU_types: Set[GPUType],
+                 ):
         self.data_source_config: DataSourceConfig = data_source_config
+        self.enabled_GPU_types: List[GPUType] = list(enabled_GPU_types)
         self.__init_job_data()
 
     def __init_job_data(self):
@@ -169,30 +173,34 @@ class DataSource:
         df["submit_time"] -= df.iloc[0]['submit_time'].item()
         self.job_specs: List[JobSpec] = list()
         self.job_specs_dict: Dict[str, JobSpec] = dict()
-        for row in df.iterrows():
-            job_ID = str("job_ID" + row["jobID"])
+        np.random.seed(self.data_source_config.init_job_data_seed)
+        c = get_config()
+        model_names = list(c.model_configs.keys())
+        for _, row in df.iterrows():
+            job_ID = f"job_ID_{row['jobID']}"
             submit_time = row["submit_time"] if not self.data_source_config.submit_at_beginning else 0
             run_time = row["run_time"]
-            plan_GPU = row["plan_GPU"]
+            plan_GPU = row["plan_gpu"]
             plan_GPU = DataSource.plan_gpu_converter(plan_GPU=plan_GPU)
             computation_proportion = plan_GPU
             worker_count = plan_GPU // 100 if plan_GPU > 100 else 1
             if plan_GPU > 100:
                 computation_proportion = 100
-            GPU_type = np.random.choice(GPUType)
-            model_name = np.random.choice(ModelName)
+            GPU_type = np.random.choice(self.enabled_GPU_types)
+            model_name = np.random.choice(model_names)
             config = get_config()
             batch_size = np.random.choice(config.model_configs[model_name].batch_sizes)
             iteration_throughput = DataSource.iteration_throughput(model_name, batch_size, GPU_type, worker_count,
                                                                    computation_proportion)
-            total_iterations = run_time / iteration_throughput
+            total_iterations = int(1e9 * run_time) // iteration_throughput
             job_spec = JobSpec(job_ID=job_ID,
                                model_name=model_name,
                                batch_size=batch_size,
                                submit_time=submit_time,
                                run_time=run_time,
                                plan_GPU=plan_GPU,
-                               total_iterations=total_iterations)
+                               total_iterations=total_iterations,
+                               )
             self.job_specs.append(job_spec)
             self.job_specs_dict[job_ID] = job_spec
 
@@ -208,6 +216,16 @@ class DataSource:
                                              computation_proportion=computation_proportion, worker_count=worker_count)
         assert len(info) == 1
         return info[0]
+
+    def get_job_mem_requirement(self, job_ID: str, GPU_type: GPUType, worker_count: int) -> int:
+        job_spec = self.get_job_spec(job_ID)
+        exec_info = DataSource.get_exec_info(
+            model_name=job_spec.model_name,
+            worker_count=worker_count,
+            batch_size=job_spec.batch_size // worker_count,
+            GPU_type=GPU_type,
+            computation_proportion=100)
+        return to_normalized_memory(exec_info.most_memory_consumption)
 
     @staticmethod
     def iteration_throughput(model_name: ModelName,
@@ -231,19 +249,24 @@ class DataSource:
             infos = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
                                                   worker_count=worker_count)
             factor = info_self[0].avg_stabled_iteration_interval / info_base[0].avg_stabled_iteration_interval
+        infos = MonoJobExecInfoLoader.sort_by_computation(infos)
         greater_idx = 0
         for i, info in enumerate(infos):
             if info.computation_proportion > computation_proportion:
                 greater_idx = i
                 break
         less_idx = greater_idx - 1 if greater_idx > 0 else 0
+        if less_idx == greater_idx:
+            comp = infos[less_idx].computation_proportion
+            return factor * (computation_proportion / comp) * infos[less_idx].avg_stabled_iteration_interval
         less_comp = infos[less_idx].computation_proportion
         greater_comp = infos[greater_idx].computation_proportion
         iteration_interval_diff = infos[greater_idx].avg_stabled_iteration_interval - infos[
             less_idx].avg_stabled_iteration_interval
         comp_diff = greater_comp - less_comp
         k = iteration_interval_diff / comp_diff
-        iteration_interval = k * (computation_proportion - less_comp)
+        iteration_interval = infos[
+            less_idx].avg_stabled_iteration_interval + k * (computation_proportion - less_comp)
         return iteration_interval * factor
 
     def get_job_task_memory(self,
@@ -251,10 +274,10 @@ class DataSource:
                             worker_count: int) -> Tuple[int, int]:
         job_spec = self.job_specs_dict[job_ID]
         info = self.get_exec_info(model_name=job_spec.model_name,
-                           batch_size=job_spec.batch_size,
-                           GPU_type=GPUType.RTX_2080Ti,
-                           worker_count=worker_count,
-                           computation_proportion=100)
+                                  batch_size=job_spec.batch_size,
+                                  GPU_type=GPUType.RTX_2080Ti,
+                                  worker_count=worker_count,
+                                  computation_proportion=100)
         normalized_memory = to_normalized_memory(info.most_memory_consumption)
         return info.most_memory_consumption, normalized_memory
 
@@ -268,7 +291,8 @@ class DataSource:
         remain_duration = int(remaining_iterations * iteration_throughput)
         return remain_duration
 
-    def job_iteration_throughput(self, job_ID: str, GPU_type: GPUType, computation_proportion: int, worker_count: int) -> float:
+    def job_iteration_throughput(self, job_ID: str, GPU_type: GPUType, computation_proportion: int,
+                                 worker_count: int) -> float:
         job_spec = self.job_specs_dict[job_ID]
         iteration_throughput = self.iteration_throughput(
             model_name=job_spec.model_name,

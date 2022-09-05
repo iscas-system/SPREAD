@@ -1,0 +1,159 @@
+{
+  "license_path": null,
+  "use_default_license": true,
+  "cluster_configs": {
+    "cluster_1": {
+      "GPUs": {
+        "RTX_2080Ti": 4
+      },
+      "enabled_scheduler_names": [
+        "RoundRobin_FCFS"
+      ],
+      "enable_plot": true
+    }
+  },
+  "enabled_cluster_configs": [
+    "cluster_1",
+    "cluster_2"
+  ],
+  "models": {
+    "ResNet50": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        20,
+        30
+      ]
+    },
+    "ResNet18": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        10,
+        15
+      ]
+    },
+    "YoloV5S": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        20,
+        25
+      ]
+    },
+    "MobileNet": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        5,
+        15
+      ]
+    }
+  },
+  "data_source_configs": {
+    "data_source_1": {
+      "data_range": [
+        100,
+        110
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 50,
+      "submit_at_beginning": true,
+      "enabled_scheduler_names": [
+        "MMKP_FCFS",
+        "RoundRobin_FCFS",
+        "BinPacking_1"
+      ],
+      "enable_plot": true
+    },
+    "data_source_2": {
+      "data_range": [
+        100,
+        200
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 100,
+      "submit_at_beginning": false,
+      "enabled_scheduler_names": [
+        "MMKP_FCFS",
+        "RoundRobin_FCFS",
+        "Themis_1",
+        "Optimus_1"
+      ],
+      "enable_plot": true
+    }
+  },
+  "enabled_data_source_configs": [
+    "data_source_1",
+    "data_source_2"
+  ],
+  "default_scheduling_preemptive_interval": 1200,
+  "schedulers": [
+    {
+      "name": "MMKP_SRSF",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization"
+      }
+    },
+    {
+      "name": "MMKP_FCFS",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "priority_type": "FCFS",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization"
+      }
+    },
+    {
+      "name": "RoundRobin_SRSF",
+      "scheduler_enum": "RoundRobin",
+      "config": {
+        "priority_type": "SRSF"
+      }
+    },
+    {
+      "name": "RoundRobin_FCFS",
+      "scheduler_enum": "RoundRobin",
+      "config": {
+        "priority_type": "FCFS"
+      }
+    },
+    {
+      "name": "BinPacking_1",
+      "scheduler_enum": "BinPacking",
+      "config": {}
+    },
+    {
+      "name": "Optimus_1",
+      "scheduler_enum": "Optimus",
+      "config": {}
+    },
+    {
+      "name": "Tiresias_1",
+      "scheduler_enum": "Tiresias",
+      "config": {}
+    }
+  ],
+  "enabled_scheduler_names": ["RoundRobin_FCFS"]
+}

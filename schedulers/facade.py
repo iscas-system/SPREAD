@@ -5,6 +5,7 @@ from data_source import DataSource
 from object import SchedulerEnum, ProfitEnum, GPUType, SolverEnum
 from profit import ProfitComprehensiveUtilization
 from scheduler import Scheduler
+from .RR import RRScheduler
 
 #                  name: str,
 #                  scheduler_enum: SchedulerEnum,
@@ -17,14 +18,14 @@ from scheduler import Scheduler
 scheduler_init_funcs: Dict[SchedulerEnum, Optional[Callable[[
                                                                 str,
                                                                 SchedulerEnum,
-                                                                SolverEnum,
-                                                                ProfitEnum,
+                                                                Optional[SolverEnum],
+                                                                Optional[ProfitEnum],
                                                                 DataSource,
                                                                 Cluster,
                                                                 Dict
                                                             ], Scheduler]]] = {
     SchedulerEnum.MMKP: None,
-    SchedulerEnum.RR: None,
+    SchedulerEnum.RoundRobin: RRScheduler,
     SchedulerEnum.Themis: None,
     SchedulerEnum.Tiresias: None,
     SchedulerEnum.Optimus: None,
@@ -34,8 +35,8 @@ scheduler_init_funcs: Dict[SchedulerEnum, Optional[Callable[[
 def init_scheduler(
         name: str,
         scheduler_enum: SchedulerEnum,
-        solver_enum: SolverEnum,
-        profit_enum: ProfitEnum,
+        solver_enum: Optional[SolverEnum],
+        profit_enum: Optional[ProfitEnum],
         data_source: DataSource,
         cluster: Cluster,
         config: Dict):
@@ -43,8 +44,7 @@ def init_scheduler(
                                                 config)
 
 
-def calculate_profit(profit_enum: ProfitEnum, data_source: DataSource, job_ID: str, GPU_type: GPUType,
-                     task_assignments: Set[TaskAssignment]) -> float:
+def calculate_profit(profit_enum: ProfitEnum, data_source: DataSource, job_ID: str, GPU_type: GPUType) -> float:
     return {
         ProfitEnum.ComprehensiveUtilization: ProfitComprehensiveUtilization
-    }[profit_enum].calculate(data_source, job_ID, GPU_type, task_assignments)
+    }[profit_enum].calculate(data_source, job_ID, GPU_type)

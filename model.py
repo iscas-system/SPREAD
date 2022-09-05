@@ -6,6 +6,9 @@ from object import GPUType, SchedulerEnum, SolverEnum
 
 
 class SolverParameters(BaseModel):
+    class Config:
+        use_enum_values = True
+
     solver_type: SolverEnum
     GPU_type: GPUType
     dist_job_to_tasks: Dict[str, Tuple[str, ...]]
@@ -14,6 +17,9 @@ class SolverParameters(BaseModel):
 
 
 class SolverResult(BaseModel):
+    class Config:
+        use_enum_values = True
+
     solver_parameters: SolverParameters
     duration: int
     profit: Union[float, int]
@@ -21,6 +27,8 @@ class SolverResult(BaseModel):
 
 
 class SnapshotRecordParameters(BaseModel):
+    class Config:
+        use_enum_values = True
     scheduler_name: str
     scheduler_type: SchedulerEnum
     solver_type: Optional[SolverEnum]
@@ -28,6 +36,9 @@ class SnapshotRecordParameters(BaseModel):
     dist_job_to_tasks: Dict[str, Tuple[str, ...]]
     task_comp_mem_requirements: Dict[str, Tuple[int, int]]
     task_comp_over_supply: Dict[str, int]
+    normalized_total_over_supply: float
+    task_comp_lack_supply: Dict[str, int]
+    normalized_total_lack_supply: float
     assignments: Dict[str, Set[str]]
     profit: Union[int, float]
-    do_plot: bool
+    do_plot: Optional[bool]
