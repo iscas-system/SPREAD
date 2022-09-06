@@ -7,14 +7,13 @@
         "RTX_2080Ti": 4
       },
       "enabled_scheduler_names": [
-        "RoundRobin_FCFS"
+        "MMKP"
       ],
       "enable_plot": true
     }
   },
   "enabled_cluster_configs": [
-    "cluster_1",
-    "cluster_2"
+    "cluster_1"
   ],
   "models": {
     "ResNet50": {
@@ -25,8 +24,8 @@
         64
       ],
       "preemptive_overhead": [
-        20,
-        30
+        10,
+        15
       ]
     },
     "ResNet18": {
@@ -50,7 +49,7 @@
         128
       ],
       "preemptive_overhead": [
-        20,
+        5,
         25
       ]
     },
@@ -66,61 +65,58 @@
         5,
         15
       ]
+    },
+    "VGG16": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        10,
+        15
+      ]
+    },
+    "InceptionV3": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        5,
+        10
+      ]
     }
   },
   "data_source_configs": {
     "data_source_1": {
       "data_range": [
         100,
-        110
+        150
       ],
       "init_job_data_seed": 1,
       "job_count": 50,
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
-        "MMKP_FCFS",
-        "RoundRobin_FCFS",
-        "BinPacking_1"
-      ],
-      "enable_plot": true
-    },
-    "data_source_2": {
-      "data_range": [
-        100,
-        200
-      ],
-      "init_job_data_seed": 1,
-      "job_count": 100,
-      "submit_at_beginning": false,
-      "enabled_scheduler_names": [
-        "MMKP_FCFS",
-        "RoundRobin_FCFS",
-        "Themis_1",
-        "Optimus_1"
+        "MMKP",
+        "RoundRobin_FCFS"
       ],
       "enable_plot": true
     }
   },
   "enabled_data_source_configs": [
-    "data_source_1",
-    "data_source_2"
+    "data_source_1"
   ],
   "default_scheduling_preemptive_interval": 1200,
   "schedulers": [
     {
-      "name": "MMKP_SRSF",
+      "name": "MMKP",
       "scheduler_enum": "MMKP",
       "config": {
         "priority_type": "SRSF",
-        "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization"
-      }
-    },
-    {
-      "name": "MMKP_FCFS",
-      "scheduler_enum": "MMKP",
-      "config": {
-        "priority_type": "FCFS",
         "solver_enum": "MMKP",
         "profit_enum": "ComprehensiveUtilization"
       }
@@ -155,5 +151,7 @@
       "config": {}
     }
   ],
-  "enabled_scheduler_names": ["RoundRobin_FCFS"]
+  "enabled_scheduler_names": [
+    "MMKP"
+  ]
 }

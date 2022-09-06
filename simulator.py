@@ -10,7 +10,7 @@ import numpy as np
 from cluster import Cluster, Assignments
 from config import get_config, ClusterConfig, DataSourceConfig
 from data_source import DataSource
-from object import Job, SchedulerEnum, ProfitEnum
+from object import Job, SchedulerEnum, ProfitEnum, SolverEnum
 from plot_assignment import do_snapshot_record_plot
 from scheduler import Scheduler
 from schedulers import init_scheduler
@@ -37,8 +37,8 @@ class Simulator:
             scheduler = init_scheduler(
                 name=scheduler_desc.name,
                 scheduler_enum=scheduler_enum,
-                solver_enum=scheduler_config.get("solver_enum", None),
-                profit_enum=scheduler_config.get("profit_enum", ProfitEnum.ComprehensiveUtilization),
+                solver_enum=SolverEnum[scheduler_config.get("solver_enum", None)],
+                profit_enum=ProfitEnum[scheduler_config.get("profit_enum", ProfitEnum.ComprehensiveUtilization)],
                 data_source=self.data_source,
                 cluster=Cluster(cluster_config=cluster_config),
                 config=scheduler_config)

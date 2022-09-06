@@ -86,6 +86,8 @@ class ModelName(Enum):
     BertBase = "BertBase"
     MobileNet = "MobileNet"
     YoloV5S = "YoloV5S"
+    VGG16 = "VGG16"
+    InceptionV3 = "InceptionV3"
 
 
 class JobSpec:

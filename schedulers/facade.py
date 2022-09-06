@@ -6,6 +6,7 @@ from object import SchedulerEnum, ProfitEnum, GPUType, SolverEnum
 from profit import ProfitComprehensiveUtilization
 from scheduler import Scheduler
 from .RR import RRScheduler
+from .MMKP import MMKPScheduler
 
 #                  name: str,
 #                  scheduler_enum: SchedulerEnum,
@@ -24,7 +25,7 @@ scheduler_init_funcs: Dict[SchedulerEnum, Optional[Callable[[
                                                                 Cluster,
                                                                 Dict
                                                             ], Scheduler]]] = {
-    SchedulerEnum.MMKP: None,
+    SchedulerEnum.MMKP: MMKPScheduler,
     SchedulerEnum.RoundRobin: RRScheduler,
     SchedulerEnum.Themis: None,
     SchedulerEnum.Tiresias: None,

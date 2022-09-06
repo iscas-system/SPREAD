@@ -136,7 +136,7 @@ class Config:
                 job_count=c["job_count"],
                 submit_at_beginning=c["submit_at_beginning"],
                 filter_replicas=c.get("filter_replicas", [1]),
-                enabled_scheduler_names=c.get("enabled_schedulers", self.enabled_scheduler_names),
+                enabled_scheduler_names=c.get("enabled_scheduler_names", self.enabled_scheduler_names),
                 enable_plot=c.get("enable_plot", False)
             )
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
@@ -152,7 +152,7 @@ class Config:
             self.cluster_configs[cn] = ClusterConfig(
                 name=cn,
                 GPUs={GPUType[GPU_type_str]: count for GPU_type_str, count in c["GPUs"].items()},
-                enabled_scheduler_names=c.get("enabled_schedulers", self.enabled_scheduler_names),
+                enabled_scheduler_names=c.get("enabled_scheduler_names", self.enabled_scheduler_names),
                 enable_plot=c.get("enable_plot", False)
             )
         self.enabled_cluster_configs: List[str] = d["enabled_cluster_configs"]

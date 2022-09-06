@@ -68,7 +68,7 @@ class RRScheduler(Scheduler):
                 total_comp = 0
                 total_mem = 0
                 for task_assignment in task_assignments:
-                    total_comp += task_assignment.comp_proportion
+                    total_comp += task_assignment.comp_req
                     total_mem += task_assignment.memory
                 if comp_requirement + total_comp > CompCapacity:
                     break
@@ -84,7 +84,7 @@ class RRScheduler(Scheduler):
                 task_assignment = TaskAssignment(GPU_ID=GPU_ID,
                                                  GPU_type=GPU_type,
                                                  task=Task(job_ID=job_ID, task_idx=i),
-                                                 comp_proportion=comp_requirement,
+                                                 comp_req=comp_requirement,
                                                  memory=mem_requirement)
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
         return curr_GPU_ID_idx

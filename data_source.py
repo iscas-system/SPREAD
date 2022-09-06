@@ -11,7 +11,7 @@ import pandas as pd
 from scipy import stats
 
 from config import DataSourceConfig, get_config
-from object import GPUType, JobSpec, ModelName, to_normalized_memory
+from object import GPUType, JobSpec, ModelName, to_normalized_memory, CompCapacity
 
 StableWarmupStartRatio = 3
 
@@ -183,15 +183,17 @@ class DataSource:
             plan_GPU = row["plan_gpu"]
             plan_GPU = DataSource.plan_gpu_converter(plan_GPU=plan_GPU)
             computation_proportion = plan_GPU
-            worker_count = plan_GPU // 100 if plan_GPU > 100 else 1
+            worker_count = 1
             if plan_GPU > 100:
                 computation_proportion = 100
+                plan_GPU = 100
+            comp_req = computation_proportion / CompCapacity
             GPU_type = np.random.choice(self.enabled_GPU_types)
             model_name = np.random.choice(model_names)
             config = get_config()
             batch_size = np.random.choice(config.model_configs[model_name].batch_sizes)
-            iteration_throughput = DataSource.iteration_throughput(model_name, batch_size, GPU_type, worker_count,
-                                                                   computation_proportion)
+            iteration_throughput = DataSource.iteration_time(model_name, batch_size, GPU_type, worker_count,
+                                                             comp_req)
             total_iterations = int(1e9 * run_time) // iteration_throughput
             job_spec = JobSpec(job_ID=job_ID,
                                model_name=model_name,
@@ -222,17 +224,18 @@ class DataSource:
         exec_info = DataSource.get_exec_info(
             model_name=job_spec.model_name,
             worker_count=worker_count,
-            batch_size=job_spec.batch_size // worker_count,
+            batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             computation_proportion=100)
         return to_normalized_memory(exec_info.most_memory_consumption)
 
     @staticmethod
-    def iteration_throughput(model_name: ModelName,
-                             batch_size: int,
-                             GPU_type: GPUType, worker_count: int,
-                             computation_proportion: int):
+    def iteration_time(model_name: ModelName,
+                       batch_size: int,
+                       GPU_type: GPUType, worker_count: int,
+                       comp_req: float):
         batch_size = batch_size // worker_count
+        computation_proportion = int(comp_req * (100 // CompCapacity))
         info = MonoJobExecInfoLoader.extract(mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
                                              computation_proportion=computation_proportion, worker_count=worker_count)
         if len(info) == 1:
@@ -258,7 +261,7 @@ class DataSource:
         less_idx = greater_idx - 1 if greater_idx > 0 else 0
         if less_idx == greater_idx:
             comp = infos[less_idx].computation_proportion
-            return factor * (computation_proportion / comp) * infos[less_idx].avg_stabled_iteration_interval
+            return factor * infos[less_idx].avg_stabled_iteration_interval / (computation_proportion / comp)
         less_comp = infos[less_idx].computation_proportion
         greater_comp = infos[greater_idx].computation_proportion
         iteration_interval_diff = infos[greater_idx].avg_stabled_iteration_interval - infos[
@@ -284,22 +287,22 @@ class DataSource:
     def remain_duration(self,
                         job_ID: str,
                         GPU_type: GPUType,
-                        computation_proportion: int,
+                        comp_req: float,
                         worker_count: int,
                         remaining_iterations: float) -> int:
-        iteration_throughput = self.job_iteration_throughput(job_ID, GPU_type, computation_proportion, worker_count)
-        remain_duration = int(remaining_iterations * iteration_throughput)
+        iteration_time = self.job_iteration_time(job_ID, GPU_type, comp_req, worker_count)
+        remain_duration = int(remaining_iterations * iteration_time)
         return remain_duration
 
-    def job_iteration_throughput(self, job_ID: str, GPU_type: GPUType, computation_proportion: int,
-                                 worker_count: int) -> float:
+    def job_iteration_time(self, job_ID: str, GPU_type: GPUType, comp_req: float,
+                           worker_count: int) -> float:
         job_spec = self.job_specs_dict[job_ID]
-        iteration_throughput = self.iteration_throughput(
+        iteration_throughput = self.iteration_time(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             worker_count=worker_count,
-            computation_proportion=computation_proportion
+            comp_req=comp_req
         )
         return iteration_throughput
 

@@ -28,16 +28,9 @@ class SolverProtocol(Protocol):
         ...
 
 
-def do_solve(session_id: str,
-             solver_params: SolverParameters):
-    filename = datetime.datetime.now().strftime(
-        f"{session_id}_{solver_params.solver_type.value}_%Y-%m-%d-%H-%M-%S.json")
-    session_dir = get_session_dir(session_id)
-    if not os.path.exists(session_dir):
-        os.mkdir(session_dir)
-    filepath = os.path.join(session_dir, filename)
-    logging.info(f"received solver parameters, session_id = {session_id}, saving file to {filepath}")
-    solver = get_solver(solver_params.solver_type)
+def do_solve(solver_params: SolverParameters) -> Optional[SolverResult]:
+    logging.info(f"received solver parameters, solver_params: {solver_params}")
+    solver = get_solver(SolverEnum[solver_params.solver_type])
     solve_raw_res = solver(dist_job_to_tasks=solver_params.dist_job_to_tasks,
                            GPU_comp_mem_capacity=solver_params.GPU_comp_mem_capacity,
                            task_comp_mem_requirements_and_profits=solver_params.task_comp_mem_requirements_and_profits)
@@ -46,8 +39,6 @@ def do_solve(session_id: str,
     assignment, duration, profit = solve_raw_res
     solver_result = SolverResult(solver_parameters=solver_params, duration=duration, profit=profit,
                                  assignment=assignment)
-    with open(filepath, 'w') as f:
-        json.dump(solver_result.json(), f)
     return solver_result
 
 

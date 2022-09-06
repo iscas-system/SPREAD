@@ -69,12 +69,12 @@ class Cluster:
 
 
 class TaskAssignment:
-    def __init__(self, GPU_ID: str, GPU_type: GPUType, task: Task, comp_proportion: int, memory: int,
+    def __init__(self, GPU_ID: str, GPU_type: GPUType, task: Task, comp_req: int, memory: int,
                  over_supplied: int = 0):
         self.GPU_ID: str = GPU_ID
         self.GPU_type: GPUType = GPU_type
         self.task: Task = task
-        self.comp_proportion: int = comp_proportion
+        self.comp_req: int = comp_req
         self.memory: int = memory
         self.over_supplied: int = over_supplied
 
@@ -124,16 +124,15 @@ class Assignments:
             for job_ID, task_assignments in job_to_task_assignments.items():
                 for assignment in task_assignments:
                     assert isinstance(assignment, TaskAssignment)
-                    requirements[assignment.task.task_ID] = (assignment.comp_proportion, assignment.memory)
+                    requirements[assignment.task.task_ID] = (assignment.comp_req, assignment.memory)
         return requirements
 
     @staticmethod
     def merge_solver_assignments(*solver_assignments: Dict[str, Set[str]]):
-        merged: Dict[str, Set[str]] = dict()
+        merged: Dict[str, Set[str]] = defaultdict(set)
         for assignments in solver_assignments:
             for GPU_ID, task_IDs in assignments.items():
-                assert GPU_ID not in merged
-                merged[GPU_ID] = task_IDs
+                merged[GPU_ID] += task_IDs
         return merged
 
     @classmethod
@@ -153,7 +152,7 @@ class Assignments:
                 task_assignments = GPU_type_to_task_assignments[GPU_type][job_ID]
                 task = Task.from_task_ID(task_ID)
                 task_assignment = TaskAssignment(GPU_ID=GPU_ID, GPU_type=GPU_type, task=task,
-                               comp_proportion=comp, memory=mem)
+                                                 comp_req=comp, memory=mem)
                 assert task_assignment not in task_assignments
                 task_assignments.add(task_assignment)
         return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
@@ -229,7 +228,7 @@ class Assignments:
                     dist_jobs.add(job_ID)
                 job_ID_to_task_assignments[job_ID] = deepcopy(task_assignments)
                 GPU_IDs = job_ID_to_GPU_IDs[job_ID]
-                comp = next(iter(task_assignments)).comp_proportion
+                comp = next(iter(task_assignments)).comp_req
                 for GPU_ID in GPU_IDs:
                     GPU_ID_to_remaining_comp[GPU_ID] -= comp
                     GPU_ID_to_job_size[GPU_ID] += 1
@@ -293,7 +292,7 @@ class Assignments:
             plan_total_comp = job_spec.plan_comp * job_spec.plan_worker_count
             task_total_comp = 0
             for task_assignment in task_assignments:
-                task_total_comp += task_assignment.over_supplied + task_assignment.comp_proportion
+                task_total_comp += task_assignment.over_supplied + task_assignment.comp_req
             if task_total_comp >= plan_total_comp:
                 continue
             lack_supply = plan_total_comp - task_total_comp
@@ -312,21 +311,21 @@ class Assignments:
     def job_iteration_time(self, data_source: DataSource, job_ID: str) -> float:
         task_assignments = self.job_ID_to_task_assignments[job_ID]
         assert len(task_assignments) > 0
-        comp_proportion = {task_assignment.comp_proportion + task_assignment.over_supplied for task_assignment in
+        comp_req = {task_assignment.comp_req + task_assignment.over_supplied for task_assignment in
                            task_assignments}
-        assert len(comp_proportion) == 1
-        comp_proportion = next(iter(comp_proportion))
+        assert len(comp_req) == 1
+        comp_req = next(iter(comp_req))
         GPU_type = {task_assignment.GPU_type for task_assignment in task_assignments}
         assert len(GPU_type) == 1
         GPU_type = next(iter(GPU_type))
         worker_count = len(task_assignments)
         job_spec = data_source.get_job_spec(job_ID)
-        return data_source.iteration_throughput(
+        return data_source.iteration_time(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             worker_count=worker_count,
-            computation_proportion=comp_proportion
+            comp_req=comp_req
         )
 
     def running_status(self, data_source: DataSource) -> Dict:
