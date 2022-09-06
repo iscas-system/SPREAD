@@ -191,7 +191,15 @@ class DataSource:
             GPU_type = np.random.choice(self.enabled_GPU_types)
             model_name = np.random.choice(model_names)
             config = get_config()
-            batch_size = np.random.choice(config.model_configs[model_name].batch_sizes)
+            batch_sizes = config.model_configs[model_name].batch_sizes
+            threshold = 32
+            batch_sizes_fixed = list()
+            for batch_size in batch_sizes:
+                if batch_size > threshold:
+                    batch_sizes_fixed += [batch_size for _ in range(6)]
+                else:
+                    batch_sizes_fixed += [batch_size for _ in range(2)]
+            batch_size = np.random.choice(batch_sizes_fixed)
             iteration_throughput = DataSource.iteration_time(model_name, batch_size, GPU_type, worker_count,
                                                              comp_req)
             total_iterations = int(1e9 * run_time) // iteration_throughput
@@ -297,14 +305,14 @@ class DataSource:
     def job_iteration_time(self, job_ID: str, GPU_type: GPUType, comp_req: float,
                            worker_count: int) -> float:
         job_spec = self.job_specs_dict[job_ID]
-        iteration_throughput = self.iteration_time(
+        iteration_time = self.iteration_time(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             worker_count=worker_count,
             comp_req=comp_req
         )
-        return iteration_throughput
+        return iteration_time
 
     @staticmethod
     def plan_gpu_converter(plan_GPU: int):

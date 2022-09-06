@@ -31,7 +31,7 @@ def do_snapshot_record_plot(session_id: str, snapshot_record_parameters: Snapsho
     if snapshot_record_parameters.solver_type is None:
         solver_type = "None"
     else:
-        solver_type = snapshot_record_parameters.solver_type.value
+        solver_type = snapshot_record_parameters.solver_type
 
     filename = datetime.datetime.now().strftime(
         f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{snapshot_record_parameters.profit}_%Y-%m-%d-%H-%M-%S")

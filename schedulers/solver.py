@@ -52,10 +52,6 @@ class AssignmentSolver:
         dist_job_task_size_tasks = {
             dist_job: (len(tasks), tasks) for dist_job, tasks in dist_job_to_tasks.items()
         }
-        dist_jobs, dist_job_task_size, dist_job_tasks = gu.multidict(dist_job_task_size_tasks)
-        # dist_jobs, dist_job_task_size, dist_job_tasks = gu.multidict({
-        #     "job_1": (2, ("task_1_job_1", "task_2_job_1"))
-        # })
         GPUs, GPU_comp_capacity, GPU_mem_capacity = gu.multidict(GPU_comp_mem_capacity)
         # GPUs, GPU_comp_capacity, GPU_mem_capacity = gu.multidict({
         #     "T4_1": (10, 15),
@@ -69,8 +65,10 @@ class AssignmentSolver:
         #     "task_1_job_2": [3, 10, 13],
         #     "task_1_job_3": [2, 5, 7],
         # })
+
         m = gu.Model()
         X = m.addVars(tasks, GPUs, vtype=GRB.BINARY)
+
 
         m.addConstrs(
             (X.sum(t, '*') <= 1 for t in tasks),
@@ -86,29 +84,34 @@ class AssignmentSolver:
              for a in GPUs),
             "task_mem_requirement_less_than_GPU_capacity")
 
-        m.addConstrs(
-            (gu.quicksum(X[t, a]
-                         for t in dist_job_tasks[dist_job]) <= 1
-             for a in GPUs
-             for dist_job in dist_jobs),
-            "dist_job_tasks_not_on_same_GPU")
+        if len(dist_job_task_size_tasks) > 0:
+            dist_jobs, dist_job_task_size, dist_job_tasks = gu.multidict(dist_job_task_size_tasks)
+            # dist_jobs, dist_job_task_size, dist_job_tasks = gu.multidict({
+            #     "job_1": (2, ("task_1_job_1", "task_2_job_1"))
+            # })
+            m.addConstrs(
+                (gu.quicksum(X[t, a]
+                             for t in dist_job_tasks[dist_job]) <= 1
+                 for a in GPUs
+                 for dist_job in dist_jobs),
+                "dist_job_tasks_not_on_same_GPU")
 
-        z = gu.tupledict()
-        for dist_job in dist_jobs:
-            z[dist_job, 1] = m.addVar(vtype=GRB.BINARY, name=f"{dist_job}_indicator_1")
-            z[dist_job, 2] = m.addVar(vtype=GRB.BINARY, name=f"{dist_job}_indicator_2")
+            z = gu.tupledict()
+            for dist_job in dist_jobs:
+                z[dist_job, 1] = m.addVar(vtype=GRB.BINARY, name=f"{dist_job}_indicator_1")
+                z[dist_job, 2] = m.addVar(vtype=GRB.BINARY, name=f"{dist_job}_indicator_2")
 
-            m.addConstr(z[dist_job, 1] + z[dist_job, 2] == 1, f"{dist_job}_indicator_equation")
+                m.addConstr(z[dist_job, 1] + z[dist_job, 2] == 1, f"{dist_job}_indicator_equation")
 
-            m.addGenConstrIndicator(z[dist_job, 1], True,
-                                    gu.quicksum(X[t, a] for t in dist_job_tasks[dist_job] for a in GPUs),
-                                    GRB.LESS_EQUAL, 0,
-                                    name=f"{dist_job}_indicator_LESS_EQUAL_0")
-            m.addGenConstrIndicator(z[dist_job, 2], True,
-                                    gu.quicksum(X[t, a] for t in dist_job_tasks[dist_job] for a in GPUs),
-                                    GRB.GREATER_EQUAL,
-                                    dist_job_task_size[dist_job],
-                                    name=f"{dist_job}_indicator_GREATER_EQUAL_0")
+                m.addGenConstrIndicator(z[dist_job, 1], True,
+                                        gu.quicksum(X[t, a] for t in dist_job_tasks[dist_job] for a in GPUs),
+                                        GRB.LESS_EQUAL, 0,
+                                        name=f"{dist_job}_indicator_LESS_EQUAL_0")
+                m.addGenConstrIndicator(z[dist_job, 2], True,
+                                        gu.quicksum(X[t, a] for t in dist_job_tasks[dist_job] for a in GPUs),
+                                        GRB.GREATER_EQUAL,
+                                        dist_job_task_size[dist_job],
+                                        name=f"{dist_job}_indicator_GREATER_EQUAL_0")
 
         m.setObjective(gu.quicksum(task_profits[t] * X[t, a] for t in tasks for a in GPUs), GRB.MAXIMIZE)
 
@@ -124,12 +127,16 @@ class AssignmentSolver:
         logging.info(
             f"MMKP solver finds optimal solution, objective value == {m.ObjVal}, duration seconds = {(end - start) / 1e9}")
         assignment: Dict[str, Set[str]] = defaultdict(set)
-        assert m.ObjVal == float(cal_profit(task_comp_mem_requirements_and_profits, assignment))
         for a in GPUs:
             for t in tasks:
                 if X[t, a].X < 0.5:
                     continue
                 assignment[a].add(t)
+        own_calculated_profit = float(cal_profit(task_comp_mem_requirements_and_profits, assignment))
+        diff = abs(m.ObjVal - own_calculated_profit)
+        logging.info(f"diff with own calculated profit: {diff}")
+        if diff > 1e-7:
+            logging.warning(f"diff > 1e-7: {diff}")
 
         return assignment, end - start, cal_profit(task_comp_mem_requirements_and_profits, assignment)
 

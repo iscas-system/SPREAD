@@ -244,13 +244,20 @@ class PlayRecord:
             f"Player_record_{self.scheduler_name}_%Y-%m-%d-%H-%M-%S.json")
         filepath = os.path.join(json_dir, filename)
         d = dict()
+        done_records = dict()
+        for job_ID, job in self.done_records.items():
+            done_records[job_ID] = {
+                "job_ID": job.job_ID,
+                "start_time": job.start_time,
+                "completion_time": job.completion_time,
+            }
         d["session_id"] = self.session_id
         d["scheduler_name"] = self.scheduler_name
-        d["scheduler_enum"] = self.scheduler_enum
+        d["scheduler_enum"] = self.scheduler_enum.name
         d["data_source_config_name"] = self.data_source_config.name
         d["cluster_config_name"] = self.cluster_config.name
         d["preemptive_records"] = self.preemptive_records
-        d["done_records"] = self.done_records
+        d["done_records"] = done_records
         d["schedule_overheads"] = self.schedule_overheads
         d["job_specs"] = [job_spec.to_dict() for job_spec in self.data_source.job_specs]
         d["normalized_over_supply"] = self.normalized_over_supply

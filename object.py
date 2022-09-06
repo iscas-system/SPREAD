@@ -6,7 +6,7 @@ from typing import Optional, Dict
 GBi = 1024 * 1024 * 1024  # 1024 * 1024 * 1024 B
 
 CompCapacity = 20
-MemoryUnit = GBi
+MemoryUnit = GBi // 2
 
 def to_normalized_memory(real_memory):
     if real_memory % MemoryUnit == 0:
@@ -113,7 +113,7 @@ class JobSpec:
     def to_dict(self) -> Dict:
         return {
             "job_ID": self.job_ID,
-            "model_name": self.model_name,
+            "model_name": self.model_name.name,
             "batch_size": self.batch_size,
             "submit_time": self.submit_time,
             "plan_GPU": self.plan_GPU,

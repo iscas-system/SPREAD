@@ -13,7 +13,7 @@ class SolverParameters(BaseModel):
     GPU_type: GPUType
     dist_job_to_tasks: Dict[str, Tuple[str, ...]]
     GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
-    task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, Union[int, float]]]
+    task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
 
 
 class SolverResult(BaseModel):

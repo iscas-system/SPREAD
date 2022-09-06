@@ -132,7 +132,7 @@ class Assignments:
         merged: Dict[str, Set[str]] = defaultdict(set)
         for assignments in solver_assignments:
             for GPU_ID, task_IDs in assignments.items():
-                merged[GPU_ID] += task_IDs
+                merged[GPU_ID] = merged[GPU_ID].union(task_IDs)
         return merged
 
     @classmethod
@@ -344,3 +344,21 @@ class Assignments:
         for job_ID in job_IDs:
             job_ID_to_task_assignments.pop(job_ID)
         return Assignments.from_job_ID_to_task_assignments(job_ID_to_task_assignments=job_ID_to_task_assignments)
+
+    def merge(self, other: 'Assignments') -> 'Assignments':
+        GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(lambda :defaultdict(set))
+        def add(assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]]):
+            for GPU_type, job_task_assignments in assignments.items():
+                for job_ID, task_assignments in job_task_assignments.items():
+                    GPU_type_to_task_assignments[GPU_type][job_ID] = {TaskAssignment(
+                        GPU_ID=task_assignment.GPU_ID,
+                        GPU_type=task_assignment.GPU_type,
+                        task=Task(job_ID=task_assignment.task.job_ID, task_idx=task_assignment.task.task_idx),
+                        comp_req=task_assignment.comp_req,
+                        memory=task_assignment.memory) for task_assignment in task_assignments}
+        add(self.GPU_type_to_task_assignments)
+        add(other.GPU_type_to_task_assignments)
+        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+
+    def clone(self) -> 'Assignments':
+        return self.merge(Assignments())
