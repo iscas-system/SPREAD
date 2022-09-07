@@ -9,7 +9,7 @@ from collections import defaultdict
 
 class RRScheduler(Scheduler):
     def _init_config(self):
-        ...
+        self.strict = self.config.get("strict", True)
 
     def do_assign(self, preemptive: bool) -> Tuple[Assignments, Optional[Any]]:
         jobs = self.cluster.jobs
@@ -17,7 +17,7 @@ class RRScheduler(Scheduler):
         curr_GPU_ID_idx = -1
         GPU_IDs = sorted(self.cluster.GPU_IDs)
         if not preemptive:
-            GPU_ID_to_task_assignments = self.cluster.assignments.GPU_ID_to_task_assignments()
+            GPU_ID_to_task_assignments = self.cluster.assignments.GPU_ID_to_task_assignments
         else:
             GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = defaultdict(set)
 
@@ -61,8 +61,7 @@ class RRScheduler(Scheduler):
             if len(GPU_type) != 1:
                 continue
             GPU_type = next(iter(GPU_type))
-            mem_requirement = self.data_source.get_job_mem_requirement(job_ID=job_ID, GPU_type=GPU_type,
-                                                     worker_count=worker_count)
+            _, mem_requirement = self.data_source.get_job_task_memory(job_ID=job_ID, worker_count=worker_count)
             for GPU_ID in GPU_IDs_selected:
                 task_assignments = GPU_ID_to_task_assignments[GPU_ID]
                 total_comp = 0

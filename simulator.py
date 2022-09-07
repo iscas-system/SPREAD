@@ -1,20 +1,20 @@
 import datetime
 import json
-import logging
-from time import time_ns
 import os.path
+from time import time_ns
 from typing import Dict, Tuple, Set, Optional, List, Any
 
 import numpy as np
 
 from cluster import Cluster, Assignments
+from common import get_json_dir
 from config import get_config, ClusterConfig, DataSourceConfig
 from data_source import DataSource
+from log import info
 from object import Job, SchedulerEnum, ProfitEnum, SolverEnum
 from plot_assignment import do_snapshot_record_plot
 from scheduler import Scheduler
 from schedulers import init_scheduler
-from common import get_json_dir
 
 
 class Simulator:
@@ -23,7 +23,8 @@ class Simulator:
                  cluster_config: ClusterConfig):
         c = get_config()
         self.data_source_config: DataSourceConfig = data_source_config
-        self.data_source: DataSource = DataSource(data_source_config=data_source_config, enabled_GPU_types=cluster_config.GPU_types)
+        self.data_source: DataSource = DataSource(data_source_config=data_source_config,
+                                                  enabled_GPU_types=cluster_config.GPU_types)
         self.cluster_config: ClusterConfig = cluster_config
         enabled_schedulers = set(self.data_source_config.enabled_scheduler_names).intersection(
             set(self.cluster_config.enabled_scheduler_names))
@@ -43,7 +44,7 @@ class Simulator:
                 cluster=Cluster(cluster_config=cluster_config),
                 config=scheduler_config)
             self.schedulers.append(scheduler)
-        logging.info(f"Simulator Initialized, enabling schedulers: {[scheduler.name for scheduler in self.schedulers]}")
+        info(f"Simulator Initialized, enabling schedulers: {[scheduler.name for scheduler in self.schedulers]}")
         self.now: int = 0
         self.next_job_idx: int = 0
         self.last_preemptive_time: int = 0
@@ -55,7 +56,7 @@ class Simulator:
 
     def play(self):
         for scheduler in self.schedulers:
-            logging.info(f"Simulator playing for scheduler: {scheduler.name}")
+            info(f"Simulator playing for scheduler: {scheduler.name}")
             self.play_for_scheduler(scheduler)
 
     def play_for_scheduler(self, scheduler: Scheduler):
@@ -75,12 +76,15 @@ class Simulator:
             if next_events is None:
                 break
             duration, submit_job_IDs, done_job_IDs, is_preemptive_interval = next_events
+            if self.now == 0:
+                is_preemptive_interval = True
             done_jobs: Set[Job] = set()
             for job_ID in done_job_IDs:
                 scheduler.cluster.done(job_ID=job_ID, now=self.now)
                 done_jobs.add(scheduler.cluster.get_job(job_ID))
             record.add_done_jobs(done_jobs=done_jobs)
-            scheduler.cluster.assignments = scheduler.cluster.assignments.remove_jobs(job_IDs={job.job_ID for job in done_jobs})
+            scheduler.cluster.assignments = scheduler.cluster.assignments.remove_jobs(
+                job_IDs={job.job_ID for job in done_jobs})
             self.pass_duration(cluster=scheduler.cluster, duration=duration)
             if is_preemptive_interval:
                 self.last_preemptive_time = self.now
@@ -95,7 +99,7 @@ class Simulator:
             assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval)
             end = time_ns()
             scheduler.cluster.assignments = assignments
-            logging.info(f"Simulator scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
+            info(f"Simulator scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
             snapshot_record_parameters = scheduler.build_snapshot_record_parameters()
             enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
             snapshot_record_parameters.do_plot = enable_plot
@@ -105,12 +109,13 @@ class Simulator:
 
             record.add_schedule_overhead(end - before)
             record.add_schedule_reports(scheduler_reports)
-            record.add_normalized_lack_supply(snapshot_record_parameters.normalized_total_lack_supply)
-            record.add_normalized_over_supply(snapshot_record_parameters.normalized_total_over_supply)
+            record.add_assignments_statistics(
+                scheduler.cluster.assignments.statistics(cluster=scheduler.cluster, data_source=self.data_source))
 
-            logging.info(f"running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
-            job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in self.job_remaining_durations(scheduler.cluster).items()}
-            logging.info(f"running job remaining durations (second): {job_remaining_duration_seconds}")
+            info(f"running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
+            job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in
+                                              self.job_remaining_durations(scheduler.cluster).items()}
+            info(f"running job remaining durations (second): {job_remaining_duration_seconds}")
         record.save()
 
     def add_preemptive_overheads(self, cluster: Cluster, record: 'PlayRecord', last_assignments: Assignments,
@@ -152,7 +157,8 @@ class Simulator:
         if len(submit_jobs) == 0 and len(done_jobs) == 0:
             return None
         c = get_config()
-        scheduler_preemptive_interval = int(1e9 * scheduler.config.get("preemptive_interval", c.default_scheduling_preemptive_interval))
+        scheduler_preemptive_interval = int(
+            1e9 * scheduler.config.get("preemptive_interval", c.default_scheduling_preemptive_interval))
         next_preemptive_time = (scheduler_preemptive_interval + self.last_preemptive_time)
         next_preemptive_duration = (next_preemptive_time - self.now) if scheduler_preemptive_interval != 0 else np.inf
         min_time = int(np.min([submit_time, done_time, next_preemptive_duration]))
@@ -212,8 +218,7 @@ class PlayRecord:
         self.done_records: Dict[str, Job] = dict()
         self.schedule_overheads: List[int] = list()
         self.schedule_reports: List[Optional[Any]] = list()
-        self.normalized_over_supply: List[float] = list()
-        self.normalized_lack_supply: List[float] = list()
+        self.assignments_statistics: List[Dict] = list()
 
     def add_preemptive_overheads(self, preemptive_overheads: Dict[str, int]):
         self.preemptive_records.append(preemptive_overheads)
@@ -232,11 +237,8 @@ class PlayRecord:
     def add_schedule_reports(self, schedule_reports: Optional[Any]):
         self.schedule_reports.append(schedule_reports)
 
-    def add_normalized_over_supply(self, normalized_over_supply: float):
-        self.normalized_over_supply.append(normalized_over_supply)
-
-    def add_normalized_lack_supply(self, normalized_lack_supply: float):
-        self.normalized_lack_supply.append(normalized_lack_supply)
+    def add_assignments_statistics(self, data: Dict):
+        self.assignments_statistics.append(data)
 
     def save(self):
         json_dir = get_json_dir(self.session_id)
@@ -260,7 +262,10 @@ class PlayRecord:
         d["done_records"] = done_records
         d["schedule_overheads"] = self.schedule_overheads
         d["job_specs"] = [job_spec.to_dict() for job_spec in self.data_source.job_specs]
-        d["normalized_over_supply"] = self.normalized_over_supply
-        d["normalized_lack_supply"] = self.normalized_lack_supply
+        d["assignment_statistics"] = self.assignments_statistics
+
+        def np_encoder(object):
+            if isinstance(object, np.generic):
+                return object.item()
         with open(filepath, 'w') as f:
-            json.dump(d, f)
+            json.dump(d, f, default=np_encoder, indent='\t')

@@ -1,6 +1,5 @@
 import datetime
 import json
-import logging
 import os.path
 import pathlib
 from collections import defaultdict
@@ -13,6 +12,7 @@ from matplotlib.patches import Patch
 
 from cluster import Assignments
 from common import get_fig_dir, get_json_dir
+from log import info
 from model import *
 from object import CompCapacity
 
@@ -37,7 +37,7 @@ def do_snapshot_record_plot(session_id: str, snapshot_record_parameters: Snapsho
         f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{snapshot_record_parameters.profit}_%Y-%m-%d-%H-%M-%S")
     json_filepath = os.path.join(get_json_dir(session_id), filename + ".json")
     fig_filepath = os.path.join(get_fig_dir(session_id), filename + ".pdf")
-    logging.info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")
+    info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")
     with open(json_filepath, 'w') as f:
         json.dump(snapshot_record_parameters.json(), f)
     plot_assignment(snapshot_record_parameters, filepath=fig_filepath)
@@ -287,7 +287,7 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
               label='Underutilized')
     ]
     ax.legend(handles=legend_elements, loc=(0.7, 1.05), fontsize=14)
-    ax.bar(X, np.ones(len(GPU_slots)), color="black", width=2*split_bar_width)
+    ax.bar(X, np.ones(len(GPU_slots)), color="black", width=2 * split_bar_width)
 
     ax.spines['top'].set_visible(False)
     ax.spines['left'].set_visible(False)
@@ -353,12 +353,18 @@ def do_test():
                                                             GPU_type_to_task_comp_mem_requirements=GPU_type_to_task_comp_mem_requirements,
                                                             solver_assignments=assignments)
     over_supplied_assignments_wrapped = assignments_wrapped.supplement_over_supply()
-    task_over_supply, normalized_total_over_supply = over_supplied_assignments_wrapped.get_task_over_supply()
-    task_comp_lack_supply, normalized_total_lack_supply = {
-                                                              "job_4|task_1": 4,
-                                                              "job_5|task_1": 2,
-                                                              "job_1|task_2": 2,
-                                                          }, 0.2
+    job_over_supply, normalized_total_over_supply = over_supplied_assignments_wrapped.get_job_over_supply()
+    task_over_supply = dict()
+    for job_ID, task_assignments in over_supplied_assignments_wrapped.job_ID_to_task_assignments.items():
+        worker_count = len(task_assignments)
+        for task_assignment in task_assignments:
+            task_over_supply[task_assignment.task.task_ID] = job_over_supply[job_ID] // worker_count
+
+    task_comp_lack_supply = {
+        "job_4|task_1": 4,
+        "job_5|task_1": 2,
+        "job_1|task_2": 2,
+    }
     # scheduler_name: str
     #     scheduler_type: SchedulerEnum
     #     solver_type: Optional[SolverEnum]
@@ -377,9 +383,7 @@ def do_test():
         dist_job_to_tasks=dist_job_to_tasks,
         task_comp_mem_requirements=task_comp_mem_requirements,
         task_comp_over_supply=task_over_supply,
-        normalized_total_over_supply=normalized_total_over_supply,
         task_comp_lack_supply=task_comp_lack_supply,
-        normalized_total_lack_supply=normalized_total_lack_supply,
         assignments=assignments,
         profit=0,
         do_plot=True,

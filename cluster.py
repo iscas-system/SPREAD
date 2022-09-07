@@ -6,8 +6,8 @@ import numpy as np
 
 from config import ClusterConfig, get_config
 from data_source import DataSource
-from object import GPU, GPUType, Job, Task, CompCapacity
-from profit import ProfitCalculator
+from object import GPU, GPUType, Job, Task, CompCapacity, ProfitEnum
+from profit import ProfitCalculator, get_profit_calculator
 
 
 class Cluster:
@@ -59,13 +59,12 @@ class Cluster:
     def add_preemptive_overhead(self, job_ID: str, overhead_iterations: float):
         self.jobs[job_ID].remaining_iterations += overhead_iterations
 
-    def calc_profits(self, data_source: DataSource, profit_calculator: ProfitCalculator) -> float:
-        total_profit = 0
-        for GPU_type, job_ID_to_task_assignments in self.assignments.GPU_type_to_task_assignments.items():
-            p = profit_calculator.calculate_jobs(data_source=data_source, job_IDs=set(job_ID_to_task_assignments.keys()),
-                                                 GPU_type=GPU_type)
-            total_profit += np.sum(list(p.values()))
-        return total_profit
+    def get_GPU_total_real_mem(self) -> int:
+        total_real_mem = 0
+        for _, GPU_type in self.GPU_ID_to_GPU_type.items():
+            real_mem = GPUType.real_memory(GPU_type)
+            total_real_mem += real_mem
+        return total_real_mem
 
 
 class TaskAssignment:
@@ -100,6 +99,7 @@ class Assignments:
         for GPU_type, job_ID_task_assignments in self.GPU_type_to_task_assignments.items():
             for job_ID, task_assignments in job_ID_task_assignments.items():
                 self.job_ID_to_task_assignments[job_ID] = task_assignments
+        self.GPU_ID_to_task_assignments = self._get_GPU_ID_to_task_assignments()
 
     def to_solver_assignments(self) -> Dict[str, Set[str]]:
         d: Dict[str, Set[str]] = defaultdict(set)
@@ -189,7 +189,7 @@ class Assignments:
                 d[job_ID].add(task_assignment.GPU_ID)
         return d
 
-    def GPU_ID_to_task_assignments(self) -> Dict[str, Set[TaskAssignment]]:
+    def _get_GPU_ID_to_task_assignments(self) -> Dict[str, Set[TaskAssignment]]:
         d: DefaultDict[str, Set[TaskAssignment]] = defaultdict(set)
         for task_assignments in self.job_ID_to_task_assignments.values():
             for task_assignment in task_assignments:
@@ -275,18 +275,20 @@ class Assignments:
             GPU_type_to_task_assignments[GPU_type][job_ID] = task_assignments
         return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
-    def get_task_over_supply(self) -> Tuple[Dict[str, int], float]:
-        task_over_supply: Dict[str, int] = dict()
-        normalized_total_over_supply = 0
+    def get_job_over_supply(self) -> Tuple[Dict[str, int], int]:
+        job_over_supply: Dict[str, int] = dict()
+        total_over_supply = 0
         for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
+            task_total_oversupply = 0
             for task_assignment in task_assignments:
-                task_over_supply[task_assignment.task.task_ID] = task_assignment.over_supplied
-                normalized_total_over_supply += task_assignment.over_supplied / CompCapacity
-        return task_over_supply, normalized_total_over_supply
+                task_total_oversupply += task_assignment.over_supplied
+                total_over_supply += task_assignment.over_supplied
+            job_over_supply[job_ID] = task_total_oversupply
+        return job_over_supply, total_over_supply
 
-    def get_task_lack_supply(self, data_source: DataSource) -> Tuple[Dict[str, int], float]:
-        task_lack_supply: Dict[str, int] = dict()
-        normalized_total_lack_supply = 0.
+    def get_job_lack_supply(self, data_source: DataSource) -> Tuple[Dict[str, int], int]:
+        job_lack_supply: Dict[str, int] = dict()
+        total_lack_supply = 0
         for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
             job_spec = data_source.get_job_spec(job_ID=job_ID)
             plan_total_comp = job_spec.plan_comp * job_spec.plan_worker_count
@@ -296,11 +298,45 @@ class Assignments:
             if task_total_comp >= plan_total_comp:
                 continue
             lack_supply = plan_total_comp - task_total_comp
-            lack_supply /= len(task_assignments)
-            normalized_total_lack_supply += lack_supply / CompCapacity
+            total_lack_supply += lack_supply
+            job_lack_supply[job_ID] = lack_supply
             for task_assignment in task_assignments:
-                task_lack_supply[task_assignment.task.task_ID] = lack_supply
-        return task_lack_supply, normalized_total_lack_supply
+                job_lack_supply[task_assignment.task.task_ID] = lack_supply
+        return job_lack_supply, total_lack_supply
+
+    def get_job_computation_utilization(self, data_source: DataSource) -> Tuple[Dict[str, float], float]:
+        job_comp_util = dict()
+        total_comp_util = 0
+        for GPU_type, job_ID_to_task_assignments in self.GPU_type_to_task_assignments.items():
+            for job_ID, task_assignments in job_ID_to_task_assignments.items():
+                worker_count = len(task_assignments)
+                task_assignment = next(iter(task_assignments))
+                comp_req = task_assignment.over_supplied + task_assignment.comp_req
+                task_comp_util = data_source.job_task_computation_utilization(job_ID=job_ID, GPU_type=GPU_type, worker_count=worker_count, comp_req=comp_req)
+                job_comp_util[job_ID] = task_comp_util * worker_count
+                total_comp_util += task_comp_util * worker_count
+        return job_comp_util, total_comp_util
+
+    def get_job_real_mem_utilization(self, data_source: DataSource) -> Tuple[Dict[str, float], float]:
+        job_mem_util = dict()
+        total_mem_util = 0
+        for GPU_type, job_ID_to_task_assignments in self.GPU_type_to_task_assignments.items():
+            for job_ID, task_assignments in job_ID_to_task_assignments.items():
+                worker_count = len(task_assignments)
+                task_original_mem, _ = data_source.get_job_task_memory(job_ID=job_ID, worker_count=worker_count)
+                task_mem_util = task_original_mem
+                job_mem_util[job_ID] = task_mem_util * worker_count
+                total_mem_util += task_mem_util * worker_count
+        return job_mem_util, total_mem_util
+
+    def calc_profits(self, data_source: DataSource, profit_calculator: ProfitCalculator) -> float:
+        total_profit = 0
+        for GPU_type, job_ID_to_task_assignments in self.GPU_type_to_task_assignments.items():
+            p = profit_calculator.calculate_jobs(data_source=data_source,
+                                                 job_IDs=set(job_ID_to_task_assignments.keys()),
+                                                 GPU_type=GPU_type)
+            total_profit += np.sum(list(p.values()))
+        return total_profit
 
     def jobs_iteration_time(self, data_source: DataSource) -> Dict[str, float]:
         d: Dict[str, float] = dict()
@@ -329,15 +365,19 @@ class Assignments:
         )
 
     def running_status(self, data_source: DataSource) -> Dict:
+        job_IDs, dist_jobs = self.deployed_jobs()
+        return {
+            "running_jobs": len(job_IDs),
+            "dist_jobs": len(dist_jobs),
+        }
+
+    def deployed_jobs(self) -> Tuple[Set[str], Set[str]]:
         job_IDs = set(self.job_ID_to_task_assignments.keys())
         dist_jobs = set()
         for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
             if len(task_assignments) > 1:
                 dist_jobs.add(job_ID)
-        return {
-            "running_jobs": len(job_IDs),
-            "dist_jobs": len(dist_jobs),
-        }
+        return job_IDs, dist_jobs
 
     def remove_jobs(self, job_IDs: Set[str]) -> 'Assignments':
         job_ID_to_task_assignments = deepcopy(self.job_ID_to_task_assignments)
@@ -362,3 +402,30 @@ class Assignments:
 
     def clone(self) -> 'Assignments':
         return self.merge(Assignments())
+
+    def statistics(self, cluster: Cluster, data_source: DataSource) -> Dict:
+        job_over_supply, total_over_supply = self.get_job_over_supply()
+        job_lack_supply, total_lack_supply = self.get_job_lack_supply(data_source)
+        job_comp_util, total_comp_util = self.get_job_computation_utilization(data_source)
+        job_real_mem, total_real_mem = self.get_job_real_mem_utilization(data_source=data_source)
+        cluster_real_total_mem = cluster.get_GPU_total_real_mem()
+        profit = self.calc_profits(data_source=data_source, profit_calculator=get_profit_calculator(ProfitEnum.ComprehensiveUtilization))
+        deployed_jobs, deployed_dist_jobs = self.deployed_jobs()
+        d = {
+            "job_over_supply": job_over_supply,
+            "total_over_supply": total_over_supply,
+            "job_lack_supply": job_lack_supply,
+            "total_lack_supply": total_lack_supply,
+            "job_comp_util": job_comp_util,
+            "total_comp_util": total_comp_util,
+            "job_real_mem": job_real_mem,
+            "total_real_mem": int(total_real_mem),
+            "cluster_real_total_mem": cluster_real_total_mem,
+            "total_mem_utilization": float(total_real_mem / cluster_real_total_mem),
+            "profit": float(profit),
+            "deployed_job_size": len(deployed_jobs),
+            "deployed_dist_job_size": len(deployed_dist_jobs),
+        }
+        return d
+
+

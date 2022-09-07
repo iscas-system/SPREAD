@@ -29,7 +29,7 @@ class SolverProtocol(Protocol):
 
 
 def do_solve(solver_params: SolverParameters) -> Optional[SolverResult]:
-    logging.info(f"received solver parameters, solver_params: {solver_params}")
+    info(f"received solver parameters, solver_params: {solver_params}")
     solver = get_solver(SolverEnum[solver_params.solver_type])
     solve_raw_res = solver(dist_job_to_tasks=solver_params.dist_job_to_tasks,
                            GPU_comp_mem_capacity=solver_params.GPU_comp_mem_capacity,
@@ -121,10 +121,10 @@ class AssignmentSolver:
         end = time.time_ns()
 
         if m.Status != GRB.OPTIMAL:
-            logging.error(f"MMKP solver finds unexpected none optimal solution, status = {m.Status}")
+            info(f"MMKP solver finds unexpected none optimal solution, status = {m.Status}")
             return None
 
-        logging.info(
+        info(
             f"MMKP solver finds optimal solution, objective value == {m.ObjVal}, duration seconds = {(end - start) / 1e9}")
         assignment: Dict[str, Set[str]] = defaultdict(set)
         for a in GPUs:
@@ -134,9 +134,9 @@ class AssignmentSolver:
                 assignment[a].add(t)
         own_calculated_profit = float(cal_profit(task_comp_mem_requirements_and_profits, assignment))
         diff = abs(m.ObjVal - own_calculated_profit)
-        logging.info(f"diff with own calculated profit: {diff}")
+        info(f"diff with own calculated profit: {diff}")
         if diff > 1e-7:
-            logging.warning(f"diff > 1e-7: {diff}")
+            info(f"diff > 1e-7: {diff}")
 
         return assignment, end - start, cal_profit(task_comp_mem_requirements_and_profits, assignment)
 

@@ -1,4 +1,3 @@
-from log import *
 from schedulers.solver import AssignmentSolver
 from config import get_config, Config
 from itertools import product
@@ -6,9 +5,7 @@ from simulator import Simulator
 import argparse
 import pathlib
 import os
-
-
-init_logging()
+from log import info
 
 
 def do_test():
@@ -44,7 +41,7 @@ def do_test():
     assignment, duration, profit = AssignmentSolver.MMKP(dist_job_to_tasks=dist_job_to_tasks,
                                        GPU_comp_mem_capacity=GPU_to_comp_mem_capacity,
                                        task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits)
-    logging.info(assignment)
+    info(assignment)
 
 
 def main():

@@ -95,10 +95,11 @@
     "data_source_1": {
       "data_range": [
         100,
-        110
+        105
       ],
       "init_job_data_seed": 1,
-      "job_count": 50,
+      "job_count": 5,
+      "all_job_full_comp": false,
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
         "MMKP",

@@ -1,7 +1,5 @@
-import logging
-import sys
+import datetime
 
 
-def init_logging():
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                        format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+def info(msg: str):
+    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}] {msg}")

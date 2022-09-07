@@ -1,13 +1,16 @@
 from collections import defaultdict
+from copy import deepcopy
 from typing import Tuple, Optional, List, Dict, Set, Any, Callable
 
 import numpy as np
 
 from cluster import TaskAssignment, Assignments
+from log import info
 from object import GPUType, CompCapacity, Task
 from profit import get_profit_calculator
 from scheduler import Scheduler
-from .solver import SolverParameters, do_solve
+from .solver import SolverParameters, do_solve, SolverResult
+from .RR import RRScheduler
 
 
 class MMKPScheduler(Scheduler):
@@ -24,13 +27,15 @@ class MMKPScheduler(Scheduler):
         self.plan_comp_unit = 1
         self.score_weights = [
             MMKPScheduler.ScoreWeights((0, 0.2), 4, 1),
-            MMKPScheduler.ScoreWeights((0.2, np.inf), 1, 4)
+            MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 8)
         ]
-        self.resource_score_upper_bound = 0.4
+        self.resource_score_upper_bound = 0.5
         self.saturate_factor = 8
         self.non_preemptive_saturate_factor = 64
-        self.saturate_partitions = 5
-        ...
+        self.saturate_partitions = 10
+        self.trail_best_splittable_max_depth = 10
+        self.exploration_max_depth = 20
+        self.use_round_robin_resource_ratio = 0.75
 
     class AssignmentPlan:
         def __init__(self,
@@ -52,9 +57,10 @@ class MMKPScheduler(Scheduler):
             self.direct_plan: Optional['MMKPScheduler.AssignmentPlan'] = direct_plan
             self.total_normalized_resource_req = self._total_normalized_resource_req()
             self.balance_score = self._balance_score()
+            self.iteration_time: float = iteration_time
+            # for splitting assignment plans
             self.resource_score = self._resource_score(direct_plan)
             self.comprehensive_score = self._comprehensive_score()
-            self.iteration_time: float = iteration_time
 
         def _total_normalized_resource_req(self) -> float:
             total_normalized_resource_req = (self.comp_req / CompCapacity) * self.worker_count + \
@@ -66,21 +72,43 @@ class MMKPScheduler(Scheduler):
             return abs(self.comp_req / CompCapacity - self.mem_req / GPUType.normalized_memory(self.GPU_type))
 
         def _resource_score(self, direct: 'MMKPScheduler.AssignmentPlan') -> float:
-            if self.worker_count == 1:
+            if self.direct_plan is None:
                 return 1
             splitting_total_normalized_resource_req = self.total_normalized_resource_req
             direct_total_normalized_resource_req = direct.total_normalized_resource_req
             return splitting_total_normalized_resource_req / direct_total_normalized_resource_req - 1
 
         def _comprehensive_score(self) -> float:
+            if self.direct_plan is None:
+                return 0.
             resource_score = self.resource_score
             balance_score = self.balance_score
+            balance_score_increment = balance_score - self.direct_plan.balance_score
             for score_weight in self.score_weights:
                 r = score_weight.effective_resource_score_range
                 if r[0] < resource_score < r[1]:
-                    score = score_weight.balance_weight * balance_score + score_weight.resource_weight * resource_score
+                    score = score_weight.balance_weight * balance_score_increment + score_weight.resource_weight * resource_score
                     return score
             assert False
+
+    def use_round_robin(self, all_job_IDs: Set[str], total_normalized_resource: float, preemptive: bool) -> Optional[Tuple[Assignments, Optional[Any]]]:
+        total_plan_comp = 0
+        total_plan_mem = 0
+        for job_ID in all_job_IDs:
+            job_spec = self.data_source.get_job_spec(job_ID)
+            total_plan_comp += job_spec.plan_comp * job_spec.plan_worker_count
+            _, task_mem = self.data_source.get_job_task_memory(job_ID=job_ID,
+                                                 worker_count=job_spec.plan_worker_count)
+            plan_mem = task_mem * job_spec.plan_worker_count
+            total_plan_mem += plan_mem
+        total_consumed_normalized_comp = total_plan_comp / CompCapacity
+        total_consumed_normalized_mem = total_plan_mem / GPUType.normalized_memory(self.GPU_type)
+        total_consumed_normalized_resource = total_consumed_normalized_comp + total_consumed_normalized_mem
+        if total_consumed_normalized_resource < total_normalized_resource * self.use_round_robin_resource_ratio:
+            info("MMKP: Jobs are not enough to saturate, use RR instead.")
+            sche = RRScheduler(self.name, self.scheduler_enum, None, None, self.data_source, self.cluster, {})
+            return sche.do_assign(preemptive)
+        return None
 
     def do_assign(self, preemptive: bool) -> Tuple[Assignments, Optional[Any]]:
         GPU_size = len(self.cluster.GPU_IDs)
@@ -91,7 +119,7 @@ class MMKPScheduler(Scheduler):
         total_normalized_mem = total_mem / GPU_mem
         all_job_IDs = set(self.cluster.jobs.keys())
         if not preemptive:
-            GPU_ID_to_task_assignments = self.cluster.assignments.GPU_ID_to_task_assignments()
+            GPU_ID_to_task_assignments = self.cluster.assignments.GPU_ID_to_task_assignments
             all_job_IDs -= set(self.cluster.assignments.job_ID_to_task_assignments.keys())
         else:
             GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = defaultdict(set)
@@ -109,6 +137,13 @@ class MMKPScheduler(Scheduler):
                     total_normalized_consumed_mem += task_assignment.memory / GPU_mem
                     comp, mem = GPU_comp_mem_capacity[GPU_ID]
                     GPU_comp_mem_capacity[GPU_ID] = comp - task_assignment.comp_req, mem - task_assignment.memory
+        total_remain_normalized_resource = total_normalized_comp - total_normalized_consumed_comp + total_normalized_mem - total_normalized_consumed_mem
+        info(f"MMKP starts do assign, preemptive: {preemptive}, total_normalized_comp: {total_normalized_comp}, "
+             f"total_normalized_mem: {total_normalized_mem}, total_normalized_consumed_comp: {total_normalized_consumed_comp},"
+             f"total_normalized_consumed_mem: {total_normalized_consumed_mem}, total_remain_normalized_resource: {total_remain_normalized_resource}")
+        use_round_robin_result = self.use_round_robin(all_job_IDs=set(all_job_IDs), total_normalized_resource=total_remain_normalized_resource, preemptive=preemptive)
+        if use_round_robin_result is not None:
+            return use_round_robin_result
 
         profit_calculator = get_profit_calculator(profit_enum=self.profit_enum)
 
@@ -123,63 +158,7 @@ class MMKPScheduler(Scheduler):
             direct_assignment_plans[job_ID] = direct_plan
             split_assignment_plans[job_ID] = self.job_splitting_assignment_plan(job_ID=job_ID, direct_plan=direct_plan)
 
-        def solve_saturate_job_IDs(sorted_splittable_saturate_job_IDs_: List[str],
-                                   in_splittable_saturate_job_IDs_: List[str]):
-            partition_count_to_solver_result = dict()
-            partition_count_to_splitting_jobs = dict()
-            total_splittable_job_size = len(sorted_splittable_saturate_job_IDs_)
-            partition_size = total_splittable_job_size // self.saturate_partitions
-            if partition_size == 0:
-                partition_size = 1
-            accumulated_partition_size = 0
-            partition_count = 0
-            def solve_assignment_plans(assignment_plans_):
-                partial_job_ID_to_profit_ = {assignment_plan.job_ID: job_ID_to_profit[assignment_plan.job_ID] for
-                                            assignment_plan in assignment_plans_}
-                solver_parameters_ = self.build_solver_parameters(
-                    assignment_plans=assignment_plans_,
-                    job_ID_to_profit=partial_job_ID_to_profit_,
-                    GPU_comp_mem_capacity=GPU_comp_mem_capacity)
-                return do_solve(solver_params=solver_parameters_)
-            if total_splittable_job_size == 0:
-                assignment_plans = \
-                    [direct_assignment_plans[j_ID] for j_ID in in_splittable_saturate_job_IDs_[:]]
-                partition_count_to_splitting_jobs[partition_count] = list()
-                solver_result = solve_assignment_plans(assignment_plans_=assignment_plans)
-                partition_count_to_solver_result[partition_count] = solver_result
-            while accumulated_partition_size < total_splittable_job_size:
-                splitting_border = min(partition_size * partition_count, total_splittable_job_size)
-                splitting_job_IDs__ = sorted_splittable_saturate_job_IDs_[:splitting_border]
-                direct_job_IDs = sorted_splittable_saturate_job_IDs_[splitting_border:] + in_splittable_saturate_job_IDs_[:]
-                assignment_plans = \
-                    [split_assignment_plans[j_ID] for j_ID in splitting_job_IDs__] + \
-                    [direct_assignment_plans[j_ID] for j_ID in direct_job_IDs]
-                partition_count_to_splitting_jobs[partition_count] = splitting_job_IDs__
-                partial_job_ID_to_profit = {assignment_plan.job_ID: job_ID_to_profit[assignment_plan.job_ID] for
-                                            assignment_plan in assignment_plans}
-                solver_parameters = self.build_solver_parameters(
-                    assignment_plans=assignment_plans,
-                    job_ID_to_profit=partial_job_ID_to_profit,
-                    GPU_comp_mem_capacity=GPU_comp_mem_capacity)
-                solver_result = do_solve(solver_params=solver_parameters)
-                partition_count_to_solver_result[partition_count] = solver_result
-                partition_count += 1
-                accumulated_partition_size += partition_size
-            max_profit = None
-            max_profit_partition_count = None
-            optimum_solver_result__ = None
-            solver_durations__ = list()
-
-            for pc, solver_result in partition_count_to_solver_result.items():
-                solver_durations__.append(solver_result.duration)
-                if max_profit is None or solver_result.profit >= max_profit:
-                    max_profit = solver_result.profit
-                    optimum_solver_result__ = solver_result
-                    max_profit_partition_count = pc
-            return optimum_solver_result__, partition_count_to_splitting_jobs[max_profit_partition_count], solver_durations__
-
-        selectors: List[Callable] = [self.select_saturate_jobs_by_balancing_total_comp_mem,
-                                     self.select_splittable_jobs_by_sorting_balance_score]
+        selectors: List[Callable] = [self.select_saturate_jobs_by_balancing_total_comp_mem]
         optimum_solver_result, splitting_job_IDs = None, None
         solver_durations = list()
         for selector in selectors:
@@ -196,7 +175,11 @@ class MMKPScheduler(Scheduler):
                 continue
             sorted_splittable_saturate_job_IDs, in_splittable_saturate_job_IDs = self.extract_splittable_jobs_from_saturate_job_IDs(
                 split_assignment_plans, saturate_job_IDs)
-            optimum_solver_result_, splitting_job_IDs_, solver_durations_ = solve_saturate_job_IDs(
+            optimum_solver_result_, splitting_job_IDs_, solver_durations_ = self.solve_saturate_job_IDs_by_partitions(
+                job_ID_to_profit,
+                direct_assignment_plans,
+                split_assignment_plans,
+                GPU_comp_mem_capacity,
                 sorted_splittable_saturate_job_IDs,
                 in_splittable_saturate_job_IDs)
             solver_durations.extend(solver_durations_)
@@ -233,12 +216,203 @@ class MMKPScheduler(Scheduler):
             job_ID_to_supplied_mem[splitting_job_ID] = supplied_mem
         assignments = assignments.supplement_over_supply()
         statistics = MMKPScheduler.build_statistics(solver_durations=solver_durations,
-                                      splitting_job_IDs=splitting_job_IDs,
-                                      total_splitting_job_supplied_comp=total_splitting_job_supplied_comp,
-                                      total_splitting_job_supplied_mem=total_splitting_job_supplied_mem,
-                                      job_ID_to_supplied_comp=job_ID_to_supplied_comp,
-                                      job_ID_to_supplied_mem=job_ID_to_supplied_mem)
+                                                    splitting_job_IDs=splitting_job_IDs,
+                                                    total_splitting_job_supplied_comp=total_splitting_job_supplied_comp,
+                                                    total_splitting_job_supplied_mem=total_splitting_job_supplied_mem,
+                                                    job_ID_to_supplied_comp=job_ID_to_supplied_comp,
+                                                    job_ID_to_supplied_mem=job_ID_to_supplied_mem)
         return assignments, statistics
+
+    def solve_assignment_plans(self,
+                               assignment_plans_: List['MMKPScheduler.AssignmentPlan'],
+                               job_ID_to_profit: Dict[str, float],
+                               GPU_comp_mem_capacity: Dict[str, Tuple[int, int]], ):
+        partial_job_ID_to_profit_ = {assignment_plan.job_ID: job_ID_to_profit[assignment_plan.job_ID] for
+                                     assignment_plan in assignment_plans_}
+        solver_parameters_ = self.build_solver_parameters(
+            assignment_plans=assignment_plans_,
+            job_ID_to_profit=partial_job_ID_to_profit_,
+            GPU_comp_mem_capacity=GPU_comp_mem_capacity)
+        return do_solve(solver_params=solver_parameters_)
+
+    def solve_saturate_job_IDs_by_partitions(self,
+                                             job_ID_to_profit: Dict[str, float],
+                                             direct_assignment_plans: Dict[str, 'MMKPScheduler.AssignmentPlan'],
+                                             split_assignment_plans: Dict[str, 'MMKPScheduler.AssignmentPlan'],
+                                             GPU_comp_mem_capacity: Dict[str, Tuple[int, int]],
+                                             sorted_splittable_saturate_job_IDs_: List[str],
+                                             in_splittable_saturate_job_IDs_: List[str]):
+        trail_count_to_solver_result = dict()
+        trail_count_to_splitting_jobs = dict()
+        total_splittable_job_size = len(sorted_splittable_saturate_job_IDs_)
+        partition_size = total_splittable_job_size // self.saturate_partitions
+        if partition_size == 0:
+            partition_size = 1
+        accumulated_partition_size = 0
+        trail_count = 0
+
+        if total_splittable_job_size == 0:
+            assignment_plans = \
+                [direct_assignment_plans[j_ID] for j_ID in in_splittable_saturate_job_IDs_[:]]
+            trail_count_to_splitting_jobs[trail_count] = list()
+            solver_result = self.solve_assignment_plans(
+                assignment_plans_=assignment_plans,
+                job_ID_to_profit=job_ID_to_profit,
+                GPU_comp_mem_capacity=GPU_comp_mem_capacity)
+            trail_count_to_solver_result[trail_count] = solver_result
+        while accumulated_partition_size < total_splittable_job_size:
+            splitting_border = min(partition_size * trail_count, total_splittable_job_size)
+            splitting_job_IDs__ = sorted_splittable_saturate_job_IDs_[:splitting_border]
+            direct_job_IDs = sorted_splittable_saturate_job_IDs_[splitting_border:] + in_splittable_saturate_job_IDs_[:]
+            assignment_plans = \
+                [split_assignment_plans[j_ID] for j_ID in splitting_job_IDs__] + \
+                [direct_assignment_plans[j_ID] for j_ID in direct_job_IDs]
+            trail_count_to_splitting_jobs[trail_count] = splitting_job_IDs__
+            solver_result = self.solve_assignment_plans(
+                assignment_plans_=assignment_plans,
+                job_ID_to_profit=job_ID_to_profit,
+                GPU_comp_mem_capacity=GPU_comp_mem_capacity
+            )
+            trail_count_to_solver_result[trail_count] = solver_result
+            trail_count += 1
+            accumulated_partition_size += partition_size
+        max_profit = None
+        max_profit_trail_count = None
+        optimum_solver_result__ = None
+        solver_durations__ = list()
+
+        for tc, solver_result in trail_count_to_solver_result.items():
+            solver_durations__.append(solver_result.duration)
+            if max_profit is None or solver_result.profit >= max_profit:
+                max_profit = solver_result.profit
+                optimum_solver_result__ = solver_result
+                max_profit_trail_count = tc
+        return optimum_solver_result__, trail_count_to_splitting_jobs[
+            max_profit_trail_count], solver_durations__
+
+    def solve_saturate_job_IDs_by_hot_spot(self,
+                                           job_ID_to_profit: Dict[str, float],
+                                           direct_assignment_plans: Dict[str, 'MMKPScheduler.AssignmentPlan'],
+                                           split_assignment_plans: Dict[str, 'MMKPScheduler.AssignmentPlan'],
+                                           GPU_comp_mem_capacity: Dict[str, Tuple[int, int]],
+                                           sorted_splittable_saturate_job_IDs_: List[str],
+                                           in_splittable_saturate_job_IDs_: List[str]
+                                           ):
+        trail_count_to_solver_result = dict()
+        trail_count_to_splitting_jobs: Dict[int, Set[str]] = dict()
+        trail_count = 0
+        splittable_job_IDs_set = set(sorted_splittable_saturate_job_IDs_)
+
+        optimum_solver_result = self.solve_assignment_plans(assignment_plans_=list(direct_assignment_plans.values()),
+                                                            job_ID_to_profit=job_ID_to_profit,
+                                                            GPU_comp_mem_capacity=GPU_comp_mem_capacity)
+        trail_count_to_solver_result[0] = optimum_solver_result
+        trail_count_to_splitting_jobs[0] = set()
+        optimum_trail_count = 0
+
+        def get_GPU_remain_resource_diff(solver_res: SolverResult) -> Tuple[Assignments, Dict[str, float]]:
+            GPU_type_to_task_comp_mem_requirements: Dict[
+                GPUType, Dict[str, Tuple[int, int]]] = {self.GPU_type: dict()}
+            for task_ID, data in optimum_solver_result.solver_parameters.task_comp_mem_requirements_and_profits.items():
+                GPU_type_to_task_comp_mem_requirements[self.GPU_type][task_ID] = (data[0], data[1])
+            assignments_ = Assignments.from_solver_assigment(self.cluster.GPU_ID_to_GPU_type,
+                                                             GPU_type_to_task_comp_mem_requirements,
+                                                             solver_res.assignment)
+            GPU_remain_comp_mem = deepcopy(GPU_comp_mem_capacity)
+            for GPU_ID_, task_assignments_ in assignments_.GPU_ID_to_task_assignments.items():
+                GPU_type = self.cluster.GPU_ID_to_GPU_type[GPU_ID_]
+                GPU_mem = GPUType.normalized_memory(GPU_type=GPU_type)
+                for task_assignment_ in task_assignments_:
+                    comp, mem = GPU_remain_comp_mem[GPU_ID_]
+                    comp -= task_assignment_.comp_req / CompCapacity
+                    mem -= task_assignment_.memory / GPU_mem
+                    GPU_remain_comp_mem[GPU_ID_] = comp, mem
+            GPU_remain_resource_diff_ = dict()
+            for GPU_ID_, comp_mem in GPU_remain_comp_mem.items():
+                GPU_remain_resource_diff_[GPU_ID_] = abs(comp_mem[0] - comp_mem[1])
+            return assignments_, GPU_remain_resource_diff_
+
+        iteration_count = 0
+        while True:
+            print(f"MMKP scheduler trails for iteration: {iteration_count}")
+            assignments, GPU_remain_resource_diff = get_GPU_remain_resource_diff(optimum_solver_result)
+            GPU_ID_remain_resource_diff_sorted = sorted(self.cluster.GPU_IDs,
+                                                        key=lambda GPU_ID: GPU_remain_resource_diff[GPU_ID],
+                                                        reverse=True)
+            trail_depth = 0
+            trailed_splitting_job_IDs = set()
+
+            def trail_splitting_job_ID(trail_job_IDs: List[str]):
+                nonlocal trail_depth, trail_count, trailed_splitting_job_IDs
+                if set(trail_job_IDs) in trailed_splitting_job_IDs:
+                    return
+                trail_depth += 1
+                trail_count += 1
+                trailed_splitting_job_IDs = trailed_splitting_job_IDs.union(set(trail_job_IDs))
+                splitting_job_IDs = trail_count_to_splitting_jobs[optimum_trail_count]
+                splitting_job_IDs = deepcopy(splitting_job_IDs)
+                splitting_job_IDs = splitting_job_IDs.union(trail_job_IDs)
+                trail_count_to_splitting_jobs[trail_count] = splitting_job_IDs
+                curr_split_assignment_plans = [split_assignment_plans[j_ID] for j_ID in splitting_job_IDs]
+                curr_in_split_assignment_plans = [split_assignment_plans[j_ID] for j_ID in splitting_job_IDs if
+                                                  j_ID not in splitting_job_IDs] + \
+                                                 [direct_assignment_plans[j_ID] for j_ID in
+                                                  in_splittable_saturate_job_IDs_]
+                assignment_plans = curr_split_assignment_plans + curr_in_split_assignment_plans
+                info(
+                    f"MMKP scheduler trails with splitting {len(curr_split_assignment_plans)} jobs, in-splitting {len(curr_in_split_assignment_plans)} jobs, ")
+                solver_result = self.solve_assignment_plans(
+                    assignment_plans_=assignment_plans,
+                    job_ID_to_profit=job_ID_to_profit,
+                    GPU_comp_mem_capacity=GPU_comp_mem_capacity
+                )
+                trail_count_to_solver_result[trail_count] = solver_result
+
+            sorted_splittable_job_IDs = sorted_splittable_saturate_job_IDs_[:self.trail_best_splittable_max_depth]
+            chunk_size = 2
+            groups = [sorted_splittable_job_IDs[i:i + chunk_size] for i in
+                      range(0, len(sorted_splittable_job_IDs), chunk_size)]
+            for group in groups:
+                trail_splitting_job_ID(group)
+                if trail_depth > self.exploration_max_depth:
+                    break
+            for GPU_ID in GPU_ID_remain_resource_diff_sorted:
+                splittable_job_IDs = list()
+                for task_assignment in assignments.GPU_ID_to_task_assignments[GPU_ID]:
+                    job_ID = task_assignment.task.job_ID
+                    if job_ID in splittable_job_IDs_set:
+                        splittable_job_IDs.append(job_ID)
+                splittable_job_IDs.sort(key=lambda j_ID: split_assignment_plans[j_ID].comprehensive_score)
+                groups = [splittable_job_IDs[i:i + chunk_size] for i in range(0, len(splittable_job_IDs), chunk_size)]
+                for group in groups:
+                    trail_splitting_job_ID(group)
+                    if trail_depth > self.exploration_max_depth:
+                        break
+
+            max_profit_trail_count = None
+            for trail_count, solver_result in trail_count_to_solver_result.items():
+                if solver_result.profit > optimum_solver_result.profit:
+                    max_profit_trail_count = trail_count
+                    print(
+                        f"MMKP scheduler trails better, {max_profit_trail_count}, profit: {solver_result.profit}, optimum_solver_result.profit: {optimum_solver_result.profit}")
+            if max_profit_trail_count is None:
+                break
+            else:
+                optimum_solver_result = trail_count_to_solver_result[max_profit_trail_count]
+
+        max_profit = None
+        max_profit_trail_count = None
+        optimum_solver_result__ = None
+        solver_durations__ = list()
+
+        for tc, solver_result in trail_count_to_solver_result.items():
+            solver_durations__.append(solver_result.duration)
+            if max_profit is None or solver_result.profit >= max_profit:
+                max_profit = solver_result.profit
+                optimum_solver_result__ = solver_result
+                max_profit_trail_count = tc
+        return optimum_solver_result__, trail_count_to_splitting_jobs[
+            max_profit_trail_count], solver_durations__
 
     @staticmethod
     def build_statistics(solver_durations=None,
@@ -379,7 +553,7 @@ class MMKPScheduler(Scheduler):
                 task = Task(job_ID=job_ID, task_idx=i)
                 task_IDs.append(task.task_ID)
                 task_comp_mem_requirements_and_profits[task.task_ID] = (
-                    assignment_plan.comp_req, assignment_plan.mem_req, job_ID_to_profit[job_ID]/worker_count)
+                    assignment_plan.comp_req, assignment_plan.mem_req, job_ID_to_profit[job_ID] / worker_count)
             if worker_count > 1:
                 dist_job_to_tasks[job_ID] = tuple(task_IDs)
 
@@ -394,9 +568,8 @@ class MMKPScheduler(Scheduler):
 
     def job_direct_assignment_plan(self, job_ID: str) -> 'MMKPScheduler.AssignmentPlan':
         job_spec = self.data_source.get_job_spec(job_ID=job_ID)
-        mem_requirement = self.data_source.get_job_mem_requirement(
+        _, mem_requirement = self.data_source.get_job_task_memory(
             job_ID=job_ID,
-            GPU_type=self.GPU_type,
             worker_count=job_spec.plan_worker_count)
         iteration_time = self.data_source.job_iteration_time(
             job_ID=job_ID,
@@ -443,14 +616,13 @@ class MMKPScheduler(Scheduler):
         if no_suitable_splitting:
             return None
         assert iteration_time is not None
-        mem_requirement = self.data_source.get_job_mem_requirement(
+        _, task_mem_requirement = self.data_source.get_job_task_memory(
             job_ID=job_ID,
-            GPU_type=self.GPU_type,
             worker_count=split_plan_worker_count)
         return MMKPScheduler.AssignmentPlan(job_ID,
                                             split_plan_worker_count,
                                             split_plan_comp,
-                                            mem_requirement,
+                                            task_mem_requirement,
                                             self.GPU_type,
                                             self.score_weights,
                                             direct_plan,

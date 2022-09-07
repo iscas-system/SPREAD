@@ -1,5 +1,5 @@
 import json
-import logging
+from log import info
 import os
 import sys
 from typing import Tuple, Dict, List, Optional, Set
@@ -137,7 +137,8 @@ class Config:
                 submit_at_beginning=c["submit_at_beginning"],
                 filter_replicas=c.get("filter_replicas", [1]),
                 enabled_scheduler_names=c.get("enabled_scheduler_names", self.enabled_scheduler_names),
-                enable_plot=c.get("enable_plot", False)
+                enable_plot=c.get("enable_plot", False),
+                all_job_full_comp=c.get("all_job_full_comp", False)
             )
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
         self.model_configs: Dict[ModelName, ModelConfig] = dict()
@@ -172,12 +173,12 @@ class Config:
         GRB_LICENSE_FILE_ENV_KEY = "GRB_LICENSE_FILE"
         if self.license_path is not None:
             if not os.path.exists(self.license_path):
-                logging.fatal(f"license_location: {self.license_path} not exists.")
+                info(f"license_location: {self.license_path} not exists.")
                 sys.exit(-1)
             os.environ[GRB_LICENSE_FILE_ENV_KEY] = self.license_path
-            logging.info(f"using specified license file in {self.license_path}")
+            info(f"using specified license file in {self.license_path}")
         else:
-            logging.info(f"using license file specified in environment variable {os.environ[GRB_LICENSE_FILE_ENV_KEY]}")
+            info(f"using license file specified in environment variable {os.environ[GRB_LICENSE_FILE_ENV_KEY]}")
 
 
 class SchedulerDescription:
@@ -231,7 +232,8 @@ class DataSourceConfig:
                  submit_at_beginning: bool,
                  filter_replicas: List[int],
                  enabled_scheduler_names: List[str],
-                 enable_plot: bool
+                 enable_plot: bool,
+                 all_job_full_comp: bool,
                  ):
         self.name: str = name
         self.submit_table_path: str = submit_table_path
@@ -242,3 +244,4 @@ class DataSourceConfig:
         self.filter_replicas: List = filter_replicas
         self.enabled_scheduler_names: List[str] = enabled_scheduler_names
         self.enable_plot: bool = enable_plot
+        self.all_job_full_comp: bool = all_job_full_comp

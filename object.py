@@ -114,12 +114,12 @@ class JobSpec:
         return {
             "job_ID": self.job_ID,
             "model_name": self.model_name.name,
-            "batch_size": self.batch_size,
+            "batch_size": int(self.batch_size),
             "submit_time": self.submit_time,
-            "plan_GPU": self.plan_GPU,
+            "plan_GPU": int(self.plan_GPU),
             "plan_worker_count": self.plan_worker_count,
-            "plan_comp": self.plan_comp,
-            "run_time": self.run_time,
+            "plan_comp": int(self.plan_comp),
+            "run_time": int(self.run_time),
             "total_iterations": self.total_iterations
         }
 

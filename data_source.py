@@ -176,7 +176,10 @@ class DataSource:
         np.random.seed(self.data_source_config.init_job_data_seed)
         c = get_config()
         model_names = list(c.model_configs.keys())
+        all_job_full_comp = self.data_source_config.all_job_full_comp
         for _, row in df.iterrows():
+            if len(self.job_specs) >= self.data_source_config.job_count:
+                break
             job_ID = f"job_ID_{row['jobID']}"
             submit_time = row["submit_time"] if not self.data_source_config.submit_at_beginning else 0
             run_time = row["run_time"]
@@ -187,17 +190,20 @@ class DataSource:
             if plan_GPU > 100:
                 computation_proportion = 100
                 plan_GPU = 100
+            if all_job_full_comp:
+                plan_GPU = 100
             comp_req = computation_proportion / CompCapacity
             GPU_type = np.random.choice(self.enabled_GPU_types)
             model_name = np.random.choice(model_names)
             config = get_config()
             batch_sizes = config.model_configs[model_name].batch_sizes
             threshold = 32
+            lower_threshold = 8
             batch_sizes_fixed = list()
             for batch_size in batch_sizes:
                 if batch_size > threshold:
                     batch_sizes_fixed += [batch_size for _ in range(6)]
-                else:
+                elif batch_size > lower_threshold:
                     batch_sizes_fixed += [batch_size for _ in range(2)]
             batch_size = np.random.choice(batch_sizes_fixed)
             iteration_throughput = DataSource.iteration_time(model_name, batch_size, GPU_type, worker_count,
@@ -226,16 +232,6 @@ class DataSource:
                                              computation_proportion=computation_proportion, worker_count=worker_count)
         assert len(info) == 1
         return info[0]
-
-    def get_job_mem_requirement(self, job_ID: str, GPU_type: GPUType, worker_count: int) -> int:
-        job_spec = self.get_job_spec(job_ID)
-        exec_info = DataSource.get_exec_info(
-            model_name=job_spec.model_name,
-            worker_count=worker_count,
-            batch_size=job_spec.batch_size,
-            GPU_type=GPU_type,
-            computation_proportion=100)
-        return to_normalized_memory(exec_info.most_memory_consumption)
 
     @staticmethod
     def iteration_time(model_name: ModelName,
@@ -280,6 +276,39 @@ class DataSource:
             less_idx].avg_stabled_iteration_interval + k * (computation_proportion - less_comp)
         return iteration_interval * factor
 
+    @staticmethod
+    def computation_utilization(model_name: ModelName,
+                       batch_size: int,
+                       GPU_type: GPUType, worker_count: int,
+                       comp_req: float) -> float:
+        batch_size = batch_size // worker_count
+        computation_proportion = int(comp_req * (100 // CompCapacity))
+        info = MonoJobExecInfoLoader.extract(mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
+                                             computation_proportion=computation_proportion, worker_count=worker_count)
+        if len(info) == 1:
+            return info[0].avg_stabled_utilization
+        infos = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
+                                              worker_count=worker_count)
+        infos = MonoJobExecInfoLoader.sort_by_computation(infos)
+        greater_idx = 0
+        for i, info in enumerate(infos):
+            if info.computation_proportion > computation_proportion:
+                greater_idx = i
+                break
+        less_idx = greater_idx - 1 if greater_idx > 0 else 0
+        if less_idx == greater_idx:
+            comp = infos[less_idx].computation_proportion
+            return infos[less_idx].avg_stabled_utilization / (computation_proportion / comp)
+        less_comp = infos[less_idx].computation_proportion
+        greater_comp = infos[greater_idx].computation_proportion
+        utilization_diff = infos[greater_idx].avg_stabled_utilization - infos[
+            less_idx].avg_stabled_utilization
+        comp_diff = greater_comp - less_comp
+        k = utilization_diff / comp_diff
+        stabled_utilization = infos[
+            less_idx].avg_stabled_utilization + k * (computation_proportion - less_comp)
+        return stabled_utilization
+
     def get_job_task_memory(self,
                             job_ID: str,
                             worker_count: int) -> Tuple[int, int]:
@@ -313,6 +342,17 @@ class DataSource:
             comp_req=comp_req
         )
         return iteration_time
+
+    def job_task_computation_utilization(self, job_ID: str, GPU_type: GPUType, comp_req: float, worker_count: int) -> float:
+        job_spec = self.job_specs_dict[job_ID]
+        utilization = self.computation_utilization(
+            model_name=job_spec.model_name,
+            batch_size=job_spec.batch_size,
+            GPU_type=GPU_type,
+            worker_count=worker_count,
+            comp_req=comp_req
+        )
+        return utilization
 
     @staticmethod
     def plan_gpu_converter(plan_GPU: int):
