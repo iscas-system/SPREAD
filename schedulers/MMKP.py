@@ -22,20 +22,21 @@ class MMKPScheduler(Scheduler):
             self.resource_weight: float = resource_weight
 
     def _init_config(self):
-        self.throughput_degrade_threshold = 0.05
+        self.throughput_degrade_threshold = self.config.get("throughput_degrade_threshold", 0.05)
         self.GPU_type = GPUType.RTX_2080Ti
-        self.plan_comp_unit = 1
+        self.plan_comp_unit = self.config.get("plan_comp_unit", 1)
         self.score_weights = [
             MMKPScheduler.ScoreWeights((0, 0.2), 4, 1),
             MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 8)
         ]
-        self.resource_score_upper_bound = 0.5
-        self.saturate_factor = 8
-        self.non_preemptive_saturate_factor = 64
-        self.saturate_partitions = 10
-        self.trail_best_splittable_max_depth = 10
-        self.exploration_max_depth = 20
-        self.use_round_robin_resource_ratio = 0.75
+        self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 0.5)
+        self.saturate_factor = self.config.get("saturate_factor", 4)
+        self.non_preemptive_saturate_factor = self.config.get("non_preemptive_saturate_factor", 64)
+        self.saturate_partitions = self.config.get("saturate_partitions", 10)
+        self.trail_best_splittable_max_depth = self.config.get("trail_best_splittable_max_depth", 10)
+        self.exploration_max_depth = self.config.get("exploration_max_depth", 20)
+        self.use_round_robin_resource_ratio = self.config.get("use_round_robin_resource_ratio", 0.75)
+        self.solver_duration_upper_bound = self.config.get("solver_duration_upper_bound", 30)
 
     class AssignmentPlan:
         def __init__(self,
@@ -273,6 +274,8 @@ class MMKPScheduler(Scheduler):
                 job_ID_to_profit=job_ID_to_profit,
                 GPU_comp_mem_capacity=GPU_comp_mem_capacity
             )
+            if solver_result.duration / 1e9 > self.solver_duration_upper_bound:
+                break
             trail_count_to_solver_result[trail_count] = solver_result
             trail_count += 1
             accumulated_partition_size += partition_size
@@ -342,8 +345,9 @@ class MMKPScheduler(Scheduler):
             trail_depth = 0
             trailed_splitting_job_IDs = set()
 
+            stop_trailing = False
             def trail_splitting_job_ID(trail_job_IDs: List[str]):
-                nonlocal trail_depth, trail_count, trailed_splitting_job_IDs
+                nonlocal trail_depth, trail_count, trailed_splitting_job_IDs, stop_trailing
                 if set(trail_job_IDs) in trailed_splitting_job_IDs:
                     return
                 trail_depth += 1
@@ -367,6 +371,8 @@ class MMKPScheduler(Scheduler):
                     GPU_comp_mem_capacity=GPU_comp_mem_capacity
                 )
                 trail_count_to_solver_result[trail_count] = solver_result
+                if solver_result.duration / 1e9 > self.solver_duration_upper_bound:
+                    stop_trailing = True
 
             sorted_splittable_job_IDs = sorted_splittable_saturate_job_IDs_[:self.trail_best_splittable_max_depth]
             chunk_size = 2
@@ -376,7 +382,11 @@ class MMKPScheduler(Scheduler):
                 trail_splitting_job_ID(group)
                 if trail_depth > self.exploration_max_depth:
                     break
+                if stop_trailing:
+                    break
             for GPU_ID in GPU_ID_remain_resource_diff_sorted:
+                if stop_trailing:
+                    break
                 splittable_job_IDs = list()
                 for task_assignment in assignments.GPU_ID_to_task_assignments[GPU_ID]:
                     job_ID = task_assignment.task.job_ID
@@ -387,6 +397,8 @@ class MMKPScheduler(Scheduler):
                 for group in groups:
                     trail_splitting_job_ID(group)
                     if trail_depth > self.exploration_max_depth:
+                        break
+                    if stop_trailing:
                         break
 
             max_profit_trail_count = None

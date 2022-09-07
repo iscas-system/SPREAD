@@ -4,7 +4,7 @@
   "cluster_configs": {
     "cluster_1": {
       "GPUs": {
-        "RTX_2080Ti": 4
+        "RTX_2080Ti": 8
       },
       "enabled_scheduler_names": [
         "MMKP"
@@ -24,8 +24,8 @@
         64
       ],
       "preemptive_overhead": [
-        10,
-        15
+        0,
+        0
       ]
     },
     "ResNet18": {
@@ -36,8 +36,8 @@
         64
       ],
       "preemptive_overhead": [
-        10,
-        15
+        0,
+        0
       ]
     },
     "YoloV5S": {
@@ -49,8 +49,8 @@
         128
       ],
       "preemptive_overhead": [
-        5,
-        25
+        0,
+        0
       ]
     },
     "MobileNet": {
@@ -62,8 +62,8 @@
         128
       ],
       "preemptive_overhead": [
-        5,
-        15
+        0,
+        0
       ]
     },
     "VGG16": {
@@ -74,8 +74,8 @@
         64
       ],
       "preemptive_overhead": [
-        10,
-        15
+        0,
+        0
       ]
     },
     "InceptionV3": {
@@ -86,8 +86,8 @@
         64
       ],
       "preemptive_overhead": [
-        5,
-        10
+        0,
+        0
       ]
     }
   },
@@ -95,10 +95,10 @@
     "data_source_1": {
       "data_range": [
         100,
-        105
+        500
       ],
       "init_job_data_seed": 1,
-      "job_count": 5,
+      "job_count": 20,
       "all_job_full_comp": false,
       "submit_at_beginning": true,
       "enabled_scheduler_names": [

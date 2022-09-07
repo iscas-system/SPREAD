@@ -293,7 +293,7 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
     ax.spines['left'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.set_yticks([])
-    ax.set_xticks(X, [GPUType.label(GPU_ID_to_GPU_type[GPU_ID]) for GPU_ID in GPU_slots], rotation=45)
+    ax.set_xticks(X, [f"{GPUType.label(GPU_ID_to_GPU_type[GPU_ID])} {idx}" for idx, GPU_ID in enumerate(GPU_slots)], rotation=45)
     ax.tick_params(axis=u'both', which=u'both', length=0)
     fig.tight_layout()
     # fig.show()

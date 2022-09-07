@@ -68,7 +68,10 @@ class Simulator:
                             scheduler_enum=scheduler.scheduler_enum, data_source_config=self.data_source_config,
                             data_source=self.data_source, cluster_config=self.cluster_config)
 
+        iteration = 0
         while True:
+            info(f"Simulator: starts iteration: {iteration}")
+            iteration += 1
             now_assignments = scheduler.cluster.assignments
             self.add_preemptive_overheads(cluster=scheduler.cluster, record=record, last_assignments=last_assignments,
                                           curr_assignments=now_assignments)
@@ -112,10 +115,11 @@ class Simulator:
             record.add_assignments_statistics(
                 scheduler.cluster.assignments.statistics(cluster=scheduler.cluster, data_source=self.data_source))
 
-            info(f"running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
+            info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
+            info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs) - len(scheduler.cluster.done_jobs)}")
             job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in
                                               self.job_remaining_durations(scheduler.cluster).items()}
-            info(f"running job remaining durations (second): {job_remaining_duration_seconds}")
+            info(f"Simulator: running job remaining durations (second): {job_remaining_duration_seconds}")
         record.save()
 
     def add_preemptive_overheads(self, cluster: Cluster, record: 'PlayRecord', last_assignments: Assignments,
