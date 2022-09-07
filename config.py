@@ -138,7 +138,7 @@ class Config:
                 filter_replicas=c.get("filter_replicas", [1]),
                 enabled_scheduler_names=c.get("enabled_scheduler_names", self.enabled_scheduler_names),
                 enable_plot=c.get("enable_plot", False),
-                all_job_full_comp=c.get("all_job_full_comp", False)
+                comp_distribution=c.get("comp_distribution", "ali")
             )
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
         self.model_configs: Dict[ModelName, ModelConfig] = dict()
@@ -233,7 +233,7 @@ class DataSourceConfig:
                  filter_replicas: List[int],
                  enabled_scheduler_names: List[str],
                  enable_plot: bool,
-                 all_job_full_comp: bool,
+                 comp_distribution: str,
                  ):
         self.name: str = name
         self.submit_table_path: str = submit_table_path
@@ -244,4 +244,4 @@ class DataSourceConfig:
         self.filter_replicas: List = filter_replicas
         self.enabled_scheduler_names: List[str] = enabled_scheduler_names
         self.enable_plot: bool = enable_plot
-        self.all_job_full_comp: bool = all_job_full_comp
+        self.comp_distribution: str = comp_distribution

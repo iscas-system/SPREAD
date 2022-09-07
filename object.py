@@ -106,7 +106,7 @@ class JobSpec:
         self.submit_time: int = submit_time
         self.plan_GPU: int = plan_GPU
         self.plan_worker_count: int = 1 if plan_GPU <= 100 else plan_GPU // 100
-        self.plan_comp = plan_GPU // (100//CompCapacity)
+        self.plan_comp = plan_GPU // (100//CompCapacity) // self.plan_worker_count
         self.run_time: int = run_time
         self.total_iterations: float = total_iterations
 
@@ -189,6 +189,7 @@ class SchedulerEnum(Enum):
     Tiresias = "Tiresias"
     Themis = "Themis"
     Optimus = "Optimus"
+    KubeShare = "KubeShare"
 
 
 class SolverEnum(Enum):

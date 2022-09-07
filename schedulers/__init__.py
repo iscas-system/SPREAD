@@ -2,9 +2,8 @@ __all__ = [
     "SolverProtocol",
     "SolverEnum",
     "AssignmentSolver",
-    "init_scheduler",
-    "calculate_profit"
+    "init_scheduler"
 ]
 
-from .facade import init_scheduler, calculate_profit
+from .facade import init_scheduler
 from .solver import SolverEnum, SolverProtocol, AssignmentSolver

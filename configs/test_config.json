@@ -7,7 +7,9 @@
         "RTX_2080Ti": 8
       },
       "enabled_scheduler_names": [
-        "MMKP"
+        "MMKP",
+        "RoundRobin_strict",
+        "RoundRobin_best_effort"
       ],
       "enable_plot": true
     }
@@ -95,15 +97,16 @@
     "data_source_1": {
       "data_range": [
         100,
-        500
+        1000
       ],
       "init_job_data_seed": 1,
-      "job_count": 20,
-      "all_job_full_comp": false,
+      "job_count": 300,
+      "comp_distribution": "all_100",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
         "MMKP",
-        "RoundRobin_FCFS"
+        "RoundRobin_strict",
+        "RoundRobin_best_effort"
       ],
       "enable_plot": true
     }
@@ -123,22 +126,24 @@
       }
     },
     {
-      "name": "RoundRobin_SRSF",
+      "name": "RoundRobin_strict",
       "scheduler_enum": "RoundRobin",
       "config": {
-        "priority_type": "SRSF"
+        "priority_type": "FCFS",
+        "strict": false
       }
     },
     {
-      "name": "RoundRobin_FCFS",
+      "name": "RoundRobin_best_effort",
       "scheduler_enum": "RoundRobin",
       "config": {
-        "priority_type": "FCFS"
+        "priority_type": "FCFS",
+        "strict": false
       }
     },
     {
-      "name": "BinPacking_1",
-      "scheduler_enum": "BinPacking",
+      "name": "KubeShare",
+      "scheduler_enum": "KubeShare",
       "config": {}
     },
     {
@@ -153,6 +158,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "MMKP"
+    "RoundRobin_best_effort"
   ]
 }

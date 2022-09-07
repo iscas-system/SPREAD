@@ -38,8 +38,8 @@ class Simulator:
             scheduler = init_scheduler(
                 name=scheduler_desc.name,
                 scheduler_enum=scheduler_enum,
-                solver_enum=SolverEnum[scheduler_config.get("solver_enum", None)],
-                profit_enum=ProfitEnum[scheduler_config.get("profit_enum", ProfitEnum.ComprehensiveUtilization)],
+                solver_enum=SolverEnum[scheduler_config["solver_enum"]] if "solver_enum" in scheduler_config else None,
+                profit_enum=ProfitEnum[scheduler_config.get("profit_enum", ProfitEnum.ComprehensiveUtilization.name)],
                 data_source=self.data_source,
                 cluster=Cluster(cluster_config=cluster_config),
                 config=scheduler_config)
@@ -57,6 +57,7 @@ class Simulator:
     def play(self):
         for scheduler in self.schedulers:
             info(f"Simulator playing for scheduler: {scheduler.name}")
+            self.__init_play_status()
             self.play_for_scheduler(scheduler)
 
     def play_for_scheduler(self, scheduler: Scheduler):
@@ -116,7 +117,7 @@ class Simulator:
                 scheduler.cluster.assignments.statistics(cluster=scheduler.cluster, data_source=self.data_source))
 
             info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
-            info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs) - len(scheduler.cluster.done_jobs)}")
+            info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
             job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in
                                               self.job_remaining_durations(scheduler.cluster).items()}
             info(f"Simulator: running job remaining durations (second): {job_remaining_duration_seconds}")

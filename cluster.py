@@ -300,8 +300,6 @@ class Assignments:
             lack_supply = plan_total_comp - task_total_comp
             total_lack_supply += lack_supply
             job_lack_supply[job_ID] = lack_supply
-            for task_assignment in task_assignments:
-                job_lack_supply[task_assignment.task.task_ID] = lack_supply
         return job_lack_supply, total_lack_supply
 
     def get_job_computation_utilization(self, data_source: DataSource) -> Tuple[Dict[str, float], float]:

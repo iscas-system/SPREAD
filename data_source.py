@@ -176,7 +176,7 @@ class DataSource:
         np.random.seed(self.data_source_config.init_job_data_seed)
         c = get_config()
         model_names = list(c.model_configs.keys())
-        all_job_full_comp = self.data_source_config.all_job_full_comp
+        comp_distribution = self.data_source_config.comp_distribution
         for _, row in df.iterrows():
             if len(self.job_specs) >= self.data_source_config.job_count:
                 break
@@ -184,20 +184,18 @@ class DataSource:
             submit_time = row["submit_time"] if not self.data_source_config.submit_at_beginning else 0
             run_time = row["run_time"]
             plan_GPU = row["plan_gpu"]
-            plan_GPU = DataSource.plan_gpu_converter(plan_GPU=plan_GPU)
+            plan_GPU = DataSource.plan_gpu_converter(comp_distribution=comp_distribution, plan_GPU=plan_GPU)
             computation_proportion = plan_GPU
             worker_count = 1
             if plan_GPU > 100:
                 computation_proportion = 100
-                plan_GPU = 100
-            if all_job_full_comp:
                 plan_GPU = 100
             comp_req = computation_proportion / CompCapacity
             GPU_type = np.random.choice(self.enabled_GPU_types)
             model_name = np.random.choice(model_names)
             config = get_config()
             batch_sizes = config.model_configs[model_name].batch_sizes
-            threshold = 32
+            threshold = 16
             lower_threshold = 8
             batch_sizes_fixed = list()
             for batch_size in batch_sizes:
@@ -355,7 +353,7 @@ class DataSource:
         return utilization
 
     @staticmethod
-    def plan_gpu_converter(plan_GPU: int):
+    def plan_gpu_converter_ali(plan_GPU: int):
         convert_dict: Dict[int, List] = {
             100: [70, 80, 90, 100],
             50: [40, 50, 60],
@@ -367,6 +365,32 @@ class DataSource:
         if str(plan_GPU).endswith("5"):
             return plan_GPU + np.random.choice([5, -5])
         return plan_GPU
+
+    @staticmethod
+    def plan_gpu_converter_uniform(plan_GPU: int):
+        return np.random.choice([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+
+    @staticmethod
+    def plan_gpu_converter_low(plan_GPU: int):
+        return np.random.choice([10, 20, 30, 40, 50])
+
+    @staticmethod
+    def plan_gpu_converter_high(plan_GPU: int):
+        return np.random.choice([10, 20, 30, 40, 50])
+
+    @staticmethod
+    def plan_gpu_converter_comp_all_100(plan_GPU: int):
+        return 100
+
+    @staticmethod
+    def plan_gpu_converter(comp_distribution: str, plan_GPU: int) -> int:
+        return {
+            "all_100": DataSource.plan_gpu_converter_comp_all_100,
+            "ali": DataSource.plan_gpu_converter_ali,
+            "uniform": DataSource.plan_gpu_converter_uniform,
+            "low": DataSource.plan_gpu_converter_low,
+            "high": DataSource.plan_gpu_converter_high,
+        }[comp_distribution](plan_GPU)
 
 
 def do_test():

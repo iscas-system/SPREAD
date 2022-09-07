@@ -1,12 +1,12 @@
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Dict, Optional
 
-from cluster import Cluster, TaskAssignment
+from cluster import Cluster
 from data_source import DataSource
-from object import SchedulerEnum, ProfitEnum, GPUType, SolverEnum
-from profit import ProfitComprehensiveUtilization
+from object import SchedulerEnum, ProfitEnum, SolverEnum
 from scheduler import Scheduler
-from .RR import RRScheduler
 from .MMKP import MMKPScheduler
+from .RR import RRScheduler
+from .kube_share import KubeShareScheduler
 
 #                  name: str,
 #                  scheduler_enum: SchedulerEnum,
@@ -30,6 +30,7 @@ scheduler_init_funcs: Dict[SchedulerEnum, Optional[Callable[[
     SchedulerEnum.Themis: None,
     SchedulerEnum.Tiresias: None,
     SchedulerEnum.Optimus: None,
+    SchedulerEnum.KubeShare: KubeShareScheduler
 }
 
 
@@ -43,9 +44,3 @@ def init_scheduler(
         config: Dict):
     return scheduler_init_funcs[scheduler_enum](name, scheduler_enum, solver_enum, profit_enum, data_source, cluster,
                                                 config)
-
-
-def calculate_profit(profit_enum: ProfitEnum, data_source: DataSource, job_ID: str, GPU_type: GPUType) -> float:
-    return {
-        ProfitEnum.ComprehensiveUtilization: ProfitComprehensiveUtilization
-    }[profit_enum].calculate(data_source, job_ID, GPU_type)
