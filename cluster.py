@@ -23,7 +23,7 @@ class Cluster:
                 self.GPU_IDs.append(g.GPU_ID)
                 self.GPU_ID_to_GPU[g.GPU_ID] = g
                 self.GPU_ID_to_GPU_type[g.GPU_ID] = g.GPU_type
-
+        self.GPU_IDs.sort()
         self.assignments: Assignments = Assignments()
         self.jobs: Dict[str, Job] = dict()
         self.done_jobs: Dict[str, Job] = dict()
@@ -51,10 +51,11 @@ class Cluster:
         self.done_jobs[job_ID] = self.jobs[job_ID]
         self.jobs.pop(job_ID)
 
-    def ensure_start(self, job_ID: str, now: int):
-        assert job_ID in self.jobs
-        if self.jobs[job_ID].start_time is None:
-            self.jobs[job_ID].start_time = now
+    def ensure_start(self, now: int):
+        for job_ID in self.assignments.job_ID_to_task_assignments:
+            assert job_ID in self.jobs
+            if self.jobs[job_ID].start_time is None:
+                self.jobs[job_ID].start_time = now
 
     def add_preemptive_overhead(self, job_ID: str, overhead_iterations: float):
         self.jobs[job_ID].remaining_iterations += overhead_iterations
@@ -329,10 +330,12 @@ class Assignments:
 
     def calc_profits(self, data_source: DataSource, profit_calculator: ProfitCalculator) -> float:
         total_profit = 0
+        job_lack_supply, _ = self.get_job_lack_supply(data_source)
         for GPU_type, job_ID_to_task_assignments in self.GPU_type_to_task_assignments.items():
             p = profit_calculator.calculate_jobs(data_source=data_source,
                                                  job_IDs=set(job_ID_to_task_assignments.keys()),
-                                                 GPU_type=GPU_type)
+                                                 GPU_type=GPU_type,
+                                                 job_lack_supply=job_lack_supply)
             total_profit += np.sum(list(p.values()))
         return total_profit
 
@@ -401,7 +404,7 @@ class Assignments:
     def clone(self) -> 'Assignments':
         return self.merge(Assignments())
 
-    def statistics(self, cluster: Cluster, data_source: DataSource) -> Dict:
+    def statistics(self, preemptive: bool, now: int, cluster: Cluster, data_source: DataSource) -> Dict:
         job_over_supply, total_over_supply = self.get_job_over_supply()
         job_lack_supply, total_lack_supply = self.get_job_lack_supply(data_source)
         job_comp_util, total_comp_util = self.get_job_computation_utilization(data_source)
@@ -409,7 +412,22 @@ class Assignments:
         cluster_real_total_mem = cluster.get_GPU_total_real_mem()
         profit = self.calc_profits(data_source=data_source, profit_calculator=get_profit_calculator(ProfitEnum.ComprehensiveUtilization))
         deployed_jobs, deployed_dist_jobs = self.deployed_jobs()
+
+        job_ID_to_task_assignments: DefaultDict = defaultdict(list)
+        for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
+            for task_assignment in task_assignments:
+                d = dict()
+                d["over_supplied"] = task_assignment.over_supplied
+                d["comp_req"] = task_assignment.comp_req
+                d["memory"] = task_assignment.memory
+                d["task_ID"] = task_assignment.task.task_ID
+                d["job_ID"] = task_assignment.task.job_ID
+                d["task_idx"] = task_assignment.task.task_idx
+                job_ID_to_task_assignments[job_ID].append(d)
+
         d = {
+            "now": now,
+            "preemptive": preemptive,
             "job_over_supply": job_over_supply,
             "total_over_supply": total_over_supply,
             "job_lack_supply": job_lack_supply,
@@ -423,6 +441,7 @@ class Assignments:
             "profit": float(profit),
             "deployed_job_size": len(deployed_jobs),
             "deployed_dist_job_size": len(deployed_dist_jobs),
+            "job_ID_to_task_assignments": job_ID_to_task_assignments,
         }
         return d
 

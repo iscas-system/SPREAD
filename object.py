@@ -88,6 +88,7 @@ class ModelName(Enum):
     YoloV5S = "YoloV5S"
     VGG16 = "VGG16"
     InceptionV3 = "InceptionV3"
+    EfficientNet = "EfficientNet"
 
 
 class JobSpec:
@@ -155,8 +156,8 @@ class Task:
     def from_task_ID(task_ID: str) -> 'Task':
         groups = re.search(r"(.*)\|task_(\d+)", task_ID)
         assert groups is not None
-        job_ID = groups.group(1)
-        task_idx = groups.group(2)
+        job_ID = str(groups.group(1))
+        task_idx = int(groups.group(2))
         return Task(job_ID=job_ID, task_idx=task_idx)
 
     def __hash__(self):
@@ -190,6 +191,7 @@ class SchedulerEnum(Enum):
     Themis = "Themis"
     Optimus = "Optimus"
     KubeShare = "KubeShare"
+    BestFit = "BestFit"
 
 
 class SolverEnum(Enum):

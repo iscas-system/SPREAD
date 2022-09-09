@@ -103,7 +103,7 @@
         1000
       ],
       "init_job_data_seed": 1,
-      "job_count": 30,
+      "job_count": 300,
       "comp_distribution": "ali",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
@@ -175,7 +175,7 @@
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali", "data_source_high", "data_source_uniform"
+    "data_source_ali"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -237,6 +237,7 @@
     }
   ],
   "enabled_scheduler_names": [
-    "MMKP_strict"
+    "MMKP_strict",
+    "MMKP_best_effort"
   ]
 }

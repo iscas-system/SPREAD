@@ -183,6 +183,7 @@ class DataSource:
             job_ID = f"job_ID_{row['jobID']}"
             submit_time = row["submit_time"] if not self.data_source_config.submit_at_beginning else 0
             run_time = row["run_time"]
+            run_time = DataSource.run_time_converter(run_time=run_time)
             plan_GPU = row["plan_gpu"]
             plan_GPU = DataSource.plan_gpu_converter(comp_distribution=comp_distribution, plan_GPU=plan_GPU)
             computation_proportion = plan_GPU
@@ -244,6 +245,8 @@ class DataSource:
             return info[0].avg_stabled_iteration_interval
         infos = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
                                               worker_count=worker_count)
+        if len(infos) == 0:
+            return None
         factor = 1.0
         if len(infos) == 0:
             info_base = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size,
@@ -355,7 +358,7 @@ class DataSource:
     @staticmethod
     def plan_gpu_converter_ali(plan_GPU: int):
         convert_dict: Dict[int, List] = {
-            100: [70, 80, 90, 100],
+            100: [70, 80, 90, 100, 100, 100],
             50: [40, 50, 60],
             25: [20, 30],
             5: [10]
@@ -372,15 +375,21 @@ class DataSource:
 
     @staticmethod
     def plan_gpu_converter_low(plan_GPU: int):
-        return np.random.choice([10, 20, 30, 40, 50])
+        return np.random.choice([20, 30, 40, 40, 40, 50, 50, 50])
 
     @staticmethod
     def plan_gpu_converter_high(plan_GPU: int):
-        return np.random.choice([10, 20, 30, 40, 50])
+        return np.random.choice([60, 70, 80, 90, 100])
 
     @staticmethod
     def plan_gpu_converter_comp_all_100(plan_GPU: int):
         return 100
+
+    @staticmethod
+    def run_time_converter(run_time: int):
+        while run_time < 30 * 60:
+            run_time *= 2
+        return run_time
 
     @staticmethod
     def plan_gpu_converter(comp_distribution: str, plan_GPU: int) -> int:

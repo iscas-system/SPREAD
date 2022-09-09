@@ -27,14 +27,14 @@ def init_global_params():
 init_global_params()
 
 
-def do_snapshot_record_plot(session_id: str, snapshot_record_parameters: SnapshotRecordParameters):
+def do_snapshot_record_plot(session_id: str, is_preemptive_interval: bool, snapshot_record_parameters: SnapshotRecordParameters):
     if snapshot_record_parameters.solver_type is None:
         solver_type = "None"
     else:
         solver_type = snapshot_record_parameters.solver_type
 
     filename = datetime.datetime.now().strftime(
-        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{snapshot_record_parameters.profit}_%Y-%m-%d-%H-%M-%S")
+        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_%Y-%m-%d_%H-%M-%S_{snapshot_record_parameters.profit}_{is_preemptive_interval}")
     json_filepath = os.path.join(get_json_dir(session_id), filename + ".json")
     fig_filepath = os.path.join(get_fig_dir(session_id), filename + ".pdf")
     info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")
@@ -71,7 +71,7 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
             task_ID_to_GPU_ID[task] = GPU_ID
     tasks_list = sorted(list(tasks))
     colors = ["lightblue", "lightgreen", "lightyellow", "lightcoral", "navajowhite", "thistle", "silver", "seashell",
-              "lightcyan", "honeydew"]
+              "lightcyan", "honeydew", "beige", "azure", "aliceblue", "snow", "floralwhite", "mintcream", "papayawhip", "palegreen"]
 
     dist_job_IDs = list()
     task_ID_to_job_ID = dict()

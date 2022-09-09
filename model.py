@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union, Set, Optional
+from typing import Dict, Tuple, Union, Set, Optional, List
 
 from pydantic import BaseModel
 
@@ -10,17 +10,45 @@ class SolverParameters(BaseModel):
         use_enum_values = True
 
     solver_type: SolverEnum
+    timeout: int
+    strict: bool
     GPU_type: GPUType
     dist_job_to_tasks: Dict[str, Tuple[str, ...]]
     GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
     task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
 
 
+class SolverParameters2(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    solver_type: SolverEnum
+    timeout: int
+    splitting_task_IDs_list_list: List[List[str]]
+    GPU_type: GPUType
+    dist_job_to_tasks: Dict[str, Tuple[str, ...]]
+    GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
+    task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
+
+class SolverParameters3(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    solver_type: SolverEnum
+    timeout: int
+    splitting_job_ID_task_sets: Dict[str, List[List[str]]]
+    GPU_type: GPUType
+    dist_tasks: List[Tuple[str, ...]]
+    GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
+    task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
+
 class SolverResult(BaseModel):
     class Config:
         use_enum_values = True
 
-    solver_parameters: SolverParameters
+    solver_parameters: Optional[SolverParameters]
+    solver_parameters2: Optional[SolverParameters2]
+    solver_parameters3: Optional[SolverParameters3]
     duration: int
     profit: Union[float, int]
     assignment: Dict[str, Set[str]]

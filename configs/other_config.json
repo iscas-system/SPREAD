@@ -12,7 +12,8 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit"
       ],
       "enable_plot": true
     }
@@ -103,7 +104,7 @@
         1000
       ],
       "init_job_data_seed": 1,
-      "job_count": 30,
+      "job_count": 300,
       "comp_distribution": "ali",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
@@ -112,7 +113,8 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit"
       ],
       "enable_plot": true
     },
@@ -131,7 +133,8 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit"
       ],
       "enable_plot": true
     },
@@ -150,7 +153,8 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit"
       ],
       "enable_plot": true
     },
@@ -169,7 +173,8 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit"
       ],
       "enable_plot": true
     }
@@ -237,6 +242,7 @@
     }
   ],
   "enabled_scheduler_names": [
-    "MMKP_strict"
+    "RoundRobin_strict",
+    "RoundRobin_best_effort"
   ]
 }

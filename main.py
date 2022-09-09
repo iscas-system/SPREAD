@@ -1,11 +1,12 @@
-from schedulers.solver import AssignmentSolver
-from config import get_config, Config
-from itertools import product
-from simulator import Simulator
 import argparse
-import pathlib
 import os
+import pathlib
+from itertools import product
+
+from config import get_config, Config
 from log import info
+from schedulers.solver import AssignmentSolver
+from simulator import Simulator
 
 
 def do_test():
@@ -38,9 +39,82 @@ def do_test():
         'job_ID_104|task_0': (16, 22, 1.8),
     }
 
-    assignment, duration, profit = AssignmentSolver.MMKP(dist_job_to_tasks=dist_job_to_tasks,
-                                       GPU_comp_mem_capacity=GPU_to_comp_mem_capacity,
-                                       task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits)
+    assignment, duration, profit = AssignmentSolver.MMKP_1(strict=False, dist_job_to_tasks=dist_job_to_tasks,
+                                                           GPU_comp_mem_capacity=GPU_to_comp_mem_capacity,
+                                                           task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits)
+    info(assignment)
+
+
+def do_test_2():
+    # test data
+    dist_job_to_tasks = {
+        "job_ID_148": ("splitting_true|job_ID_148|task_0", "splitting_true|job_ID_148|task_1")
+    }
+    GPU_to_comp_mem_capacity = {
+        "RTX_2080Ti_0": (20, 22),
+        "RTX_2080Ti_1": (20, 22),
+    }
+    task_comp_mem_requirements_and_profits = {
+        'splitting_true|job_ID_148|task_0': (10, 11, 2.28181818181818183),
+        'splitting_true|job_ID_148|task_1': (10, 11, 2.28181818181818183),
+        'splitting_false|job_ID_148|task_0': (20, 22, 4.28181818181818183),
+        # 'job_ID_129|task_0': (4, 5, 0.42727272727272725),
+        # 'job_ID_126|task_0': (4, 4, 0.38181818181818183),
+    }
+    splitting_task_IDs_list_list = [
+        ["splitting_true|job_ID_148|task_0", "splitting_true|job_ID_148|task_1", "splitting_false|job_ID_148|task_0"]
+    ]
+    assignment, profit = AssignmentSolver.MMKP_2(
+        splitting_task_IDs_list_list=splitting_task_IDs_list_list,
+        dist_job_to_tasks=dist_job_to_tasks,
+        GPU_comp_mem_capacity=GPU_to_comp_mem_capacity,
+        task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits)
+    info(assignment)
+
+
+def do_test_3():
+    # test data
+    dist_tasks = [
+        ("splitting_2|job_ID_148|task_0", "splitting_2|job_ID_148|task_1"),
+        ("splitting_4|job_ID_148|task_0", "splitting_4|job_ID_148|task_1", "splitting_4|job_ID_148|task_2", "splitting_4|job_ID_148|task_3"),
+    ]
+
+    GPU_to_comp_mem_capacity = {
+        "RTX_2080Ti_0": (20, 22),
+        "RTX_2080Ti_1": (20, 22),
+        "RTX_2080Ti_2": (20, 22),
+        "RTX_2080Ti_3": (20, 22),
+    }
+    task_comp_mem_requirements_and_profits = {
+        'splitting_4|job_ID_148|task_0': (5, 5, 1.11181818181818183),
+        'splitting_4|job_ID_148|task_1': (5, 5, 1.11181818181818183),
+        'splitting_4|job_ID_148|task_2': (5, 5, 1.11181818181818183),
+        'splitting_4|job_ID_148|task_3': (5, 5, 1.11181818181818183),
+        'splitting_2|job_ID_148|task_0': (10, 11, 2.28181818181818183),
+        'splitting_2|job_ID_148|task_1': (10, 11, 2.28181818181818183),
+        'splitting_false|job_ID_148|task_0': (20, 22, 4.57181818181818183),
+        # 'job_ID_129|task_0': (4, 5, 0.42727272727272725),
+        # 'job_ID_126|task_0': (4, 4, 0.38181818181818183),
+    }
+    splitting_job_ID_task_sets = {
+        "job_ID_148": [
+            ["splitting_false|job_ID_148|task_0"],
+            ["splitting_2|job_ID_148|task_1", "splitting_2|job_ID_148|task_0"],
+            [
+                "splitting_4|job_ID_148|task_0",
+                "splitting_4|job_ID_148|task_1",
+                "splitting_4|job_ID_148|task_2",
+                "splitting_4|job_ID_148|task_3"
+            ],
+        ]
+    }
+
+    assignment, profit = AssignmentSolver.MMKP_3(
+        timeout=30,
+        splitting_job_ID_task_sets=splitting_job_ID_task_sets,
+        dist_tasks=dist_tasks,
+        GPU_comp_mem_capacity=GPU_to_comp_mem_capacity,
+        task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits)
     info(assignment)
 
 
@@ -58,7 +132,8 @@ def main():
 
 
 def run(c: Config):
-    for data_source_config_name, cluster_config_name in product(c.enabled_data_source_configs, c.enabled_cluster_configs):
+    for data_source_config_name, cluster_config_name in product(c.enabled_data_source_configs,
+                                                                c.enabled_cluster_configs):
         data_source_config = c.data_source_configs[data_source_config_name]
         cluster_config = c.cluster_configs[cluster_config_name]
         sim = Simulator(data_source_config=data_source_config, cluster_config=cluster_config)
@@ -67,4 +142,4 @@ def run(c: Config):
 
 if __name__ == '__main__':
     main()
-    # do_test()
+    # do_test_3()

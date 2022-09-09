@@ -1,8 +1,8 @@
 import abc
 from abc import ABC
-from typing import Optional, Dict, Tuple, Set, Any
-
-from cluster import Cluster, Assignments
+from typing import Optional, Dict, Tuple, Set, Any, List
+from collections import defaultdict
+from cluster import Cluster, Assignments, TaskAssignment
 from data_source import DataSource
 from model import SnapshotRecordParameters
 from profit import get_profit_calculator
@@ -30,6 +30,24 @@ class Scheduler(ABC):
         self.priority_type: PriorityType = PriorityType[self.config.get("priority_type", "FCFS")]
         self.__init_view_data()
 
+    def GPU_remain_comp_mem(self, GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Dict[str, Tuple[int, int]]:
+        GPU_ID_to_remain_comp_mem: Dict[str, Tuple[int, int]] = dict()
+        for GPU_ID in self.cluster.GPU_IDs:
+            GPU_ID_to_remain_comp_mem[GPU_ID] = CompCapacity, GPUType.normalized_memory(self.cluster.GPU_ID_to_GPU_type[GPU_ID])
+        for GPU_ID in self.cluster.GPU_IDs:
+            GPU_mem = GPUType.normalized_memory(
+                GPU_type=self.cluster.GPU_ID_to_GPU_type[GPU_ID])
+            task_assignments = GPU_ID_to_task_assignments[GPU_ID]
+            total_comp = 0
+            total_mem = 0
+            for task_assignment in task_assignments:
+                total_comp += task_assignment.comp_req
+                total_mem += task_assignment.memory
+            remain_comp = CompCapacity - total_comp
+            remain_mem = GPU_mem - total_mem
+            GPU_ID_to_remain_comp_mem[GPU_ID] = remain_comp, remain_mem
+        return GPU_ID_to_remain_comp_mem
+
     @abc.abstractmethod
     def _init_config(self):
         ...
@@ -41,6 +59,20 @@ class Scheduler(ABC):
             comp, mem = CompCapacity, GPUType.real_memory(GPU_type=GPU_type) // MemoryUnit
             self.GPU_type_to_comp_mem_capacity[GPU_type] = (comp, mem)
             self.GPU_type_to_GPU_IDs[GPU_type] = {g.GPU_ID for g in gs}
+
+    def prepare_assign_ctx(self, preemptive: bool) -> Tuple[Dict[str, Set[TaskAssignment]], List[str]]:
+        if not preemptive:
+            GPU_ID_to_task_assignments = self.cluster.assignments.clone().GPU_ID_to_task_assignments
+        else:
+            GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = defaultdict(set)
+        job_IDs = set()
+        if not preemptive:
+            for job in self.cluster.jobs.values():
+                if job.job_ID not in self.cluster.assignments.job_ID_to_task_assignments:
+                    job_IDs.add(job.job_ID)
+        else:
+            job_IDs = list(self.cluster.jobs.keys())
+        return GPU_ID_to_task_assignments, job_IDs
 
     def build_snapshot_record_parameters(self) -> SnapshotRecordParameters:
         # scheduler_name: str
@@ -88,7 +120,7 @@ class Scheduler(ABC):
         )
 
     @abc.abstractmethod
-    def do_assign(self, preemptive: bool) -> Tuple[Assignments, Optional[Any], ]:
+    def do_assign(self, preemptive: bool, now: int) -> Tuple[Assignments, Optional[Any], ]:
         """
 
         :param preemptive:

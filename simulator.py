@@ -56,7 +56,7 @@ class Simulator:
 
     def play(self):
         for scheduler in self.schedulers:
-            info(f"Simulator playing for scheduler: {scheduler.name}")
+            info(f"Simulator playing for scheduler: {scheduler.name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
             self.__init_play_status()
             self.play_for_scheduler(scheduler)
 
@@ -80,8 +80,6 @@ class Simulator:
             if next_events is None:
                 break
             duration, submit_job_IDs, done_job_IDs, is_preemptive_interval = next_events
-            if self.now == 0:
-                is_preemptive_interval = True
             done_jobs: Set[Job] = set()
             for job_ID in done_job_IDs:
                 scheduler.cluster.done(job_ID=job_ID, now=self.now)
@@ -90,6 +88,8 @@ class Simulator:
             scheduler.cluster.assignments = scheduler.cluster.assignments.remove_jobs(
                 job_IDs={job.job_ID for job in done_jobs})
             self.pass_duration(cluster=scheduler.cluster, duration=duration)
+            if self.now == 0:
+                is_preemptive_interval = True
             if is_preemptive_interval:
                 self.last_preemptive_time = self.now
             submit_jobs: Set[Job] = set()
@@ -100,21 +100,23 @@ class Simulator:
                 submit_jobs.add(job)
             last_assignments = now_assignments
             before = time_ns()
-            assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval)
+            assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval, now=self.now)
             end = time_ns()
             scheduler.cluster.assignments = assignments
+            scheduler.cluster.ensure_start(self.now)
+
             info(f"Simulator scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
             snapshot_record_parameters = scheduler.build_snapshot_record_parameters()
             enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
             snapshot_record_parameters.do_plot = enable_plot
 
-            do_snapshot_record_plot(session_id=session_id, snapshot_record_parameters=snapshot_record_parameters)
+            do_snapshot_record_plot(session_id=session_id, is_preemptive_interval=is_preemptive_interval, snapshot_record_parameters=snapshot_record_parameters)
             running_status = scheduler.cluster.assignments.running_status(data_source=self.data_source)
 
             record.add_schedule_overhead(end - before)
             record.add_schedule_reports(scheduler_reports)
             record.add_assignments_statistics(
-                scheduler.cluster.assignments.statistics(cluster=scheduler.cluster, data_source=self.data_source))
+                scheduler.cluster.assignments.statistics(preemptive=is_preemptive_interval, now=self.now, cluster=scheduler.cluster, data_source=self.data_source))
 
             info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
             info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
@@ -181,7 +183,6 @@ class Simulator:
             for job_ID in job_ID_to_task_assignments:
                 if job_ID in cluster.done_jobs:
                     continue
-                cluster.ensure_start(job_ID=job_ID, now=self.now)
                 job = cluster.get_undone_job(job_ID=job_ID)
                 remaining_duration = job.remaining_iterations * job_ID_to_throughput[job_ID]
                 remaining_duration -= duration
