@@ -70,6 +70,7 @@ class Simulator:
                             data_source=self.data_source, cluster_config=self.cluster_config)
 
         iteration = 0
+        done_jobs_between_preemption = set()
         while True:
             info(f"Simulator: starts iteration: {iteration}")
             iteration += 1
@@ -82,8 +83,9 @@ class Simulator:
             duration, submit_job_IDs, done_job_IDs, is_preemptive_interval = next_events
             done_jobs: Set[Job] = set()
             for job_ID in done_job_IDs:
-                scheduler.cluster.done(job_ID=job_ID, now=self.now)
+                scheduler.cluster.done(job_ID=job_ID, now=self.now + duration)
                 done_jobs.add(scheduler.cluster.get_job(job_ID))
+            done_jobs_between_preemption.update(done_jobs)
             record.add_done_jobs(done_jobs=done_jobs)
             scheduler.cluster.assignments = scheduler.cluster.assignments.remove_jobs(
                 job_IDs={job.job_ID for job in done_jobs})
@@ -100,8 +102,10 @@ class Simulator:
                 submit_jobs.add(job)
             last_assignments = now_assignments
             before = time_ns()
-            assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval, now=self.now)
+            assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval, now=self.now, done_jobs_between_preemption=done_jobs_between_preemption)
             end = time_ns()
+            if is_preemptive_interval:
+                done_jobs_between_preemption.clear()
             scheduler.cluster.assignments = assignments
             scheduler.cluster.ensure_start(self.now)
 

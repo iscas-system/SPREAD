@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Tuple, Optional, Set, Dict, List, Any
 
 from cluster import TaskAssignment, Assignments
-from object import CompCapacity, GPUType, Task, PriorityType
+from object import CompCapacity, GPUType, Task, PriorityType, Job
 from scheduler import Scheduler
 from schedulers.sorter import Sorter
 import numpy as np
@@ -15,7 +15,7 @@ class TiresiasScheduler(Scheduler):
         self.job_attained_service: Dict[str, int] = defaultdict(int)
         self.last_schedule = 0
 
-    def do_assign(self, preemptive: bool, now: int) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
         GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive)
         duration = now - self.last_schedule
         self.last_schedule = now
@@ -27,6 +27,7 @@ class TiresiasScheduler(Scheduler):
         for job_ID in job_IDs:
             JAS_list.append(JAS(job_ID=job_ID, attained_service=self.job_attained_service[job_ID]))
         JAS_list.sort(key=lambda jas: jas.attained_service)
+        JAS_list = JAS_list[:300]
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
         for jas in JAS_list:
@@ -74,5 +75,5 @@ class TiresiasScheduler(Scheduler):
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
         assignments = Assignments.from_GPU_ID_to_task_assignments(GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
                                                                   GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
-        oversupplied_assignments = assignments.supplement_over_supply()
-        return oversupplied_assignments, None
+        # oversupplied_assignments = assignments.supplement_over_supply()
+        return assignments, None

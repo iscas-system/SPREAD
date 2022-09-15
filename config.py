@@ -4,7 +4,7 @@ import os
 import sys
 from typing import Tuple, Dict, List, Optional, Set
 
-from object import ModelName, SchedulerEnum, GPUType
+from object import ModelName, model_name_strs, SchedulerEnum, GPUType
 
 
 class Config:
@@ -143,6 +143,8 @@ class Config:
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
         self.model_configs: Dict[ModelName, ModelConfig] = dict()
         for model_name_str, model_config_dict in d["models"].items():
+            if model_name_str not in model_name_strs:
+                continue
             self.model_configs[ModelName[model_name_str]] = ModelConfig(
                 model_name=ModelName[model_name_str],
                 batch_sizes=model_config_dict["batch_sizes"],

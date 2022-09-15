@@ -77,6 +77,7 @@ def do_test_3():
     dist_tasks = [
         ("splitting_2|job_ID_148|task_0", "splitting_2|job_ID_148|task_1"),
         ("splitting_4|job_ID_148|task_0", "splitting_4|job_ID_148|task_1", "splitting_4|job_ID_148|task_2", "splitting_4|job_ID_148|task_3"),
+        ("splitting_false|job_ID_149|task_0","splitting_false|job_ID_149|task_1")
     ]
 
     GPU_to_comp_mem_capacity = {
@@ -93,8 +94,8 @@ def do_test_3():
         'splitting_2|job_ID_148|task_0': (10, 11, 2.28181818181818183),
         'splitting_2|job_ID_148|task_1': (10, 11, 2.28181818181818183),
         'splitting_false|job_ID_148|task_0': (20, 22, 4.57181818181818183),
-        # 'job_ID_129|task_0': (4, 5, 0.42727272727272725),
-        # 'job_ID_126|task_0': (4, 4, 0.38181818181818183),
+        'splitting_false|job_ID_149|task_0': (10, 11, 5.57181818181818183),
+        'splitting_false|job_ID_149|task_1': (10, 11, 5.57181818181818183),
     }
     splitting_job_ID_task_sets = {
         "job_ID_148": [

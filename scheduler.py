@@ -6,7 +6,7 @@ from cluster import Cluster, Assignments, TaskAssignment
 from data_source import DataSource
 from model import SnapshotRecordParameters
 from profit import get_profit_calculator
-from object import SchedulerEnum, SolverEnum, ProfitEnum, GPUType, MemoryUnit, CompCapacity, PriorityType
+from object import SchedulerEnum, SolverEnum, ProfitEnum, GPUType, MemoryUnit, CompCapacity, PriorityType, Job
 
 
 class Scheduler(ABC):
@@ -120,12 +120,5 @@ class Scheduler(ABC):
         )
 
     @abc.abstractmethod
-    def do_assign(self, preemptive: bool, now: int) -> Tuple[Assignments, Optional[Any], ]:
-        """
-
-        :param preemptive:
-        :return:
-            Assignments: assignments
-            Optional[Any]: any scheduler reports
-        """
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any],]:
         ...

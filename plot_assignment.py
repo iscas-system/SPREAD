@@ -34,12 +34,13 @@ def do_snapshot_record_plot(session_id: str, is_preemptive_interval: bool, snaps
         solver_type = snapshot_record_parameters.solver_type
 
     filename = datetime.datetime.now().strftime(
-        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_%Y-%m-%d_%H-%M-%S_{snapshot_record_parameters.profit}_{is_preemptive_interval}")
+        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_%Y-%m-%d_%H-%M-%S_{np.around(snapshot_record_parameters.profit, decimals=1)}_{is_preemptive_interval}")
     json_filepath = os.path.join(get_json_dir(session_id), filename + ".json")
     fig_filepath = os.path.join(get_fig_dir(session_id), filename + ".pdf")
     info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")
     with open(json_filepath, 'w') as f:
-        json.dump(snapshot_record_parameters.json(), f)
+        js = snapshot_record_parameters.json(indent='\t')
+        f.write(js)
     plot_assignment(snapshot_record_parameters, filepath=fig_filepath)
     return {}
 
@@ -276,13 +277,13 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
     legend_elements = [
         Patch(edgecolor="black", facecolor="white",
               hatch=hatch,
-              label='User Requested Resource'),
-        Patch(edgecolor="black", facecolor="white",
-              hatch=oversupply_hatch,
-              label='Over-Supplied Resource'),
-        Patch(edgecolor="black", facecolor="white",
-              hatch=lack_supply_hatch,
-              label='Lack of Supply'),
+              label='User-Requested Quota'),
+        # Patch(edgecolor="black", facecolor="white",
+        #       hatch=oversupply_hatch,
+        #       label='Over-Supplied Resource'),
+        # Patch(edgecolor="black", facecolor="white",
+        #       hatch=lack_supply_hatch,
+        #       label='Lack of Supply'),
         Patch(facecolor=under_utilized_color,
               label='Underutilized')
     ]

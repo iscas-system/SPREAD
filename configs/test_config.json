@@ -100,7 +100,7 @@
     "data_source_ali": {
       "data_range": [
         100,
-        1000
+        2000
       ],
       "init_job_data_seed": 1,
       "job_count": 30,
@@ -116,13 +116,32 @@
       ],
       "enable_plot": true
     },
+    "data_source_ali_fix": {
+      "data_range": [
+        100,
+        2000
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 30,
+      "comp_distribution": "ali_fix",
+      "submit_at_beginning": true,
+      "enabled_scheduler_names": [
+        "MMKP_best_effort",
+        "MMKP_strict",
+        "RoundRobin_strict",
+        "RoundRobin_best_effort",
+        "KubeShare",
+        "Tiresias"
+      ],
+      "enable_plot": true
+    },
     "data_source_high": {
       "data_range": [
         100,
-        1000
+        2000
       ],
       "init_job_data_seed": 1,
-      "job_count": 300,
+      "job_count": 30,
       "comp_distribution": "high",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
@@ -138,10 +157,10 @@
     "data_source_low": {
       "data_range": [
         100,
-        1000
+        2000
       ],
       "init_job_data_seed": 1,
-      "job_count": 300,
+      "job_count": 30,
       "comp_distribution": "low",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
@@ -157,10 +176,10 @@
     "data_source_uniform": {
       "data_range": [
         100,
-        1000
+        2000
       ],
       "init_job_data_seed": 1,
-      "job_count": 300,
+      "job_count": 30,
       "comp_distribution": "uniform",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
@@ -175,7 +194,7 @@
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali", "data_source_high", "data_source_uniform"
+    "data_source_ali_fix"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [

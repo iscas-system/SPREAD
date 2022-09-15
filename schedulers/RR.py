@@ -5,7 +5,7 @@ import numpy as np
 
 from cluster import TaskAssignment, Assignments
 from data_source import DataSource
-from object import CompCapacity, GPUType, Task
+from object import CompCapacity, GPUType, Task, Job
 from scheduler import Scheduler
 from schedulers.sorter import Sorter
 
@@ -15,7 +15,7 @@ class RRScheduler(Scheduler):
         self.strict = self.config.get("strict", True)
         self.GPU_type = GPUType.RTX_2080Ti
 
-    def do_assign(self, preemptive: bool, now: int) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
         GPU_IDs = sorted(self.cluster.GPU_IDs)
         if not preemptive:
             GPU_ID_to_task_assignments = self.cluster.assignments.clone().GPU_ID_to_task_assignments
@@ -30,10 +30,11 @@ class RRScheduler(Scheduler):
             job_IDs = list(self.cluster.jobs.keys())
         job_IDs = Sorter.sort(jobs=[self.cluster.jobs[job_ID] for job_ID in job_IDs], data_source=self.data_source,
                               priority_type=self.priority_type)
+        job_IDs = job_IDs[:300]
         assignments = RRScheduler.assign_jobs(self.strict, self.data_source, job_IDs, GPU_IDs, self.GPU_type, GPU_ID_to_task_assignments)
-        oversupplied_assignments = assignments.supplement_over_supply()
+        # oversupplied_assignments = assignments.supplement_over_supply()
 
-        return oversupplied_assignments, None
+        return assignments, None
 
     @staticmethod
     def assign_jobs(strict: bool,
@@ -106,6 +107,7 @@ class RRScheduler(Scheduler):
             for i in range(worker_count):
                 GPU_IDs_selected.add(GPU_IDs[(curr_GPU_ID_idx + i) % len(GPU_IDs)])
             _, mem_requirement = data_source.get_job_task_memory(job_ID=job_ID, worker_count=worker_count)
+            GPU_IDs_capacity_allowed = defaultdict()
             for GPU_ID in GPU_IDs_selected:
                 task_assignments = GPU_ID_to_task_assignments[GPU_ID]
                 total_comp = 0
@@ -114,22 +116,26 @@ class RRScheduler(Scheduler):
                     total_comp += task_assignment.comp_req
                     total_mem += task_assignment.memory
                 if comp_requirement + total_comp > CompCapacity:
+                    GPU_IDs_capacity_allowed[GPU_ID] = False
                     break
                 if mem_requirement + total_mem > GPUType.normalized_memory(GPU_type):
+                    GPU_IDs_capacity_allowed[GPU_ID] = False
                     break
+                GPU_IDs_capacity_allowed[GPU_ID] = True
+            if set(GPU_IDs_capacity_allowed.values()) == {True}:
                 capacity_allowed = True
-            if capacity_allowed:
                 break
         if not capacity_allowed:
             return original_GPU_ID_idx, False
-        for GPU_ID in GPU_IDs_selected:
-            for i in range(worker_count):
-                task_assignment = TaskAssignment(GPU_ID=GPU_ID,
-                                                 GPU_type=GPU_type,
-                                                 task=Task(job_ID=job_ID, task_idx=i),
-                                                 comp_req=comp_requirement,
-                                                 memory=mem_requirement)
-                GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
+        assert len(GPU_IDs_selected) == worker_count
+        for i, GPU_ID in enumerate(GPU_IDs_selected):
+            task_assignment = TaskAssignment(GPU_ID=GPU_ID,
+                                             GPU_type=GPU_type,
+                                             task=Task(job_ID=job_ID, task_idx=i),
+                                             comp_req=comp_requirement,
+                                             memory=mem_requirement)
+            GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
+
         return curr_GPU_ID_idx, True
 
     @staticmethod

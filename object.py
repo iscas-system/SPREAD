@@ -85,10 +85,13 @@ class ModelName(Enum):
     LSTM = "LSTM"
     BertBase = "BertBase"
     MobileNet = "MobileNet"
-    YoloV5S = "YoloV5S"
-    VGG16 = "VGG16"
+    # VGG16 = "VGG16"
     InceptionV3 = "InceptionV3"
+    YoloV5S = "YoloV5S"
     EfficientNet = "EfficientNet"
+
+
+model_name_strs = [model_name.name for model_name in ModelName]
 
 
 class JobSpec:
@@ -100,14 +103,15 @@ class JobSpec:
                  plan_GPU: int,
                  run_time: int,
                  total_iterations: float,
+                 worker_count: int,
                  ):
         self.job_ID: str = job_ID
         self.model_name: ModelName = model_name
         self.batch_size: int = batch_size
         self.submit_time: int = submit_time
         self.plan_GPU: int = plan_GPU
-        self.plan_worker_count: int = 1 if plan_GPU <= 100 else plan_GPU // 100
-        self.plan_comp = plan_GPU // (100//CompCapacity) // self.plan_worker_count
+        self.plan_worker_count: int = worker_count
+        self.plan_comp = plan_GPU // (100//CompCapacity)
         self.run_time: int = run_time
         self.total_iterations: float = total_iterations
 

@@ -50,7 +50,7 @@ class SolverResult(BaseModel):
     solver_parameters2: Optional[SolverParameters2]
     solver_parameters3: Optional[SolverParameters3]
     duration: int
-    profit: Union[float, int]
+    profit: int
     assignment: Dict[str, Set[str]]
 
 
@@ -66,5 +66,5 @@ class SnapshotRecordParameters(BaseModel):
     task_comp_over_supply: Dict[str, int]
     task_comp_lack_supply: Dict[str, int]
     assignments: Dict[str, Set[str]]
-    profit: Union[int, float]
+    profit: float
     do_plot: Optional[bool]

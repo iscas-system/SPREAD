@@ -53,6 +53,8 @@ class MonoJobExecInfo:
         self.most_memory_consumption: int = stats.mode(memories)[0][0]
         self.stabled_iteration_intervals: List[int] = self.iteration_intervals[
                                                       len(self.iteration_intervals) // StableWarmupStartRatio:]
+        mean_iteration_intervals = np.mean(self.stabled_iteration_intervals)
+        self.stabled_iteration_intervals = list(filter(lambda iteration_interval: iteration_interval < 50 * mean_iteration_intervals, self.stabled_iteration_intervals))
         self.avg_stabled_iteration_interval: int = int(np.mean(self.stabled_iteration_intervals))
         self.stabled_utilization: List[int] = self.utilization[len(self.utilization) // StableWarmupStartRatio:]
         self.avg_stabled_utilization: float = float(np.mean(self.stabled_utilization))
@@ -61,6 +63,7 @@ class MonoJobExecInfo:
 class MonoJobExecInfoLoader:
     @staticmethod
     def load_infos(data_dir: str) -> Dict[ModelName, List[MonoJobExecInfo]]:
+        model_name_strs = [model_name.name for model_name in ModelName]
         files_in_data_dir = os.listdir(data_dir)
         session_dirs = list()
         for filename in files_in_data_dir:
@@ -74,6 +77,8 @@ class MonoJobExecInfoLoader:
             groups = re.match(pattern, session_id)
             assert groups is not None
             model_name_str = groups.group(1)
+            if model_name_str not in model_name_strs:
+                continue
             model_name = ModelName[model_name_str]
             train_or_inference = TrainOrInference(groups.group(2))
             if train_or_inference != TrainOrInference.train:
@@ -185,13 +190,16 @@ class DataSource:
             run_time = row["run_time"]
             run_time = DataSource.run_time_converter(run_time=run_time)
             plan_GPU = row["plan_gpu"]
-            plan_GPU = DataSource.plan_gpu_converter(comp_distribution=comp_distribution, plan_GPU=plan_GPU)
-            computation_proportion = plan_GPU
-            worker_count = 1
             if plan_GPU > 100:
+                plan_GPU = 200
+            worker_count = 1
+            plan_GPU = int(DataSource.plan_gpu_converter(comp_distribution=comp_distribution, plan_GPU=plan_GPU))
+            if plan_GPU > 100:
+                worker_count = 2
                 computation_proportion = 100
-                plan_GPU = 100
-            comp_req = computation_proportion / CompCapacity
+            else:
+                computation_proportion = plan_GPU
+            comp_req = computation_proportion // (100 // CompCapacity)
             GPU_type = np.random.choice(self.enabled_GPU_types)
             model_name = np.random.choice(model_names)
             config = get_config()
@@ -215,6 +223,7 @@ class DataSource:
                                run_time=run_time,
                                plan_GPU=plan_GPU,
                                total_iterations=total_iterations,
+                               worker_count=worker_count
                                )
             self.job_specs.append(job_spec)
             self.job_specs_dict[job_ID] = job_spec
@@ -318,7 +327,7 @@ class DataSource:
                                   batch_size=job_spec.batch_size,
                                   GPU_type=GPUType.RTX_2080Ti,
                                   worker_count=worker_count,
-                                  computation_proportion=100)
+                                  computation_proportion=50)
         normalized_memory = to_normalized_memory(info.most_memory_consumption)
         return info.most_memory_consumption, normalized_memory
 
@@ -356,30 +365,55 @@ class DataSource:
         return utilization
 
     @staticmethod
-    def plan_gpu_converter_ali(plan_GPU: int):
+    def plan_gpu_converter_ali_fix(plan_GPU: int):
         convert_dict: Dict[int, List] = {
-            100: [70, 80, 90, 100, 100, 100],
-            50: [40, 50, 60],
-            25: [20, 30],
-            5: [10]
+            100: [65, 70, 75, 80, 85, 90, 95, 100, 100, 100],
+            50: [40, 45, 50, 55, 60, 65],
+            25: [15, 20, 25, 30, 35],
+            20: [10, 15, 20, 25, 30],
+            10: [5, 10, 15, 20],
+            5: [5, 10, 15]
         }
         if plan_GPU in convert_dict:
-            return np.random.choice(convert_dict[plan_GPU])
-        if str(plan_GPU).endswith("5"):
-            return plan_GPU + np.random.choice([5, -5])
+            c = np.random.choice(convert_dict[plan_GPU])
+            return c
+        if plan_GPU % 5 != 0:
+            return np.random.choice(np.arange(5, 105, 5))
+        return plan_GPU
+
+    @staticmethod
+    def plan_gpu_converter_ali_original(plan_GPU: int):
         return plan_GPU
 
     @staticmethod
     def plan_gpu_converter_uniform(plan_GPU: int):
-        return np.random.choice([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+        distribution = list(np.arange(5, 105, 5))
+        distribution += [200]
+        return np.random.choice(distribution)
+
+    @staticmethod
+    def random_normal_idx(distribution: List):
+        c = len(distribution)
+        indices = np.arange(0, c)
+        mean = np.mean(indices)
+        std = np.std(indices)
+        idx = np.random.normal(mean, std)
+        idx = int(np.around(idx))
+        if idx < 0:
+            idx = 0
+        if idx >= c:
+            idx = c-1
+        return distribution[idx]
 
     @staticmethod
     def plan_gpu_converter_low(plan_GPU: int):
-        return np.random.choice([20, 30, 40, 40, 40, 50, 50, 50])
+        distribution = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+        return DataSource.random_normal_idx(distribution)
 
     @staticmethod
     def plan_gpu_converter_high(plan_GPU: int):
-        return np.random.choice([60, 70, 80, 90, 100])
+        distribution = [45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
+        return DataSource.random_normal_idx(distribution)
 
     @staticmethod
     def plan_gpu_converter_comp_all_100(plan_GPU: int):
@@ -387,7 +421,7 @@ class DataSource:
 
     @staticmethod
     def run_time_converter(run_time: int):
-        while run_time < 30 * 60:
+        while run_time < 60 * 60:
             run_time *= 2
         return run_time
 
@@ -395,7 +429,8 @@ class DataSource:
     def plan_gpu_converter(comp_distribution: str, plan_GPU: int) -> int:
         return {
             "all_100": DataSource.plan_gpu_converter_comp_all_100,
-            "ali": DataSource.plan_gpu_converter_ali,
+            "ali": DataSource.plan_gpu_converter_ali_original,
+            "ali_fix": DataSource.plan_gpu_converter_ali_fix,
             "uniform": DataSource.plan_gpu_converter_uniform,
             "low": DataSource.plan_gpu_converter_low,
             "high": DataSource.plan_gpu_converter_high,
@@ -407,6 +442,11 @@ def do_test():
                                           batch_size=4)
     MonoJobExecInfoLoader.extract(infos, worker_count=2)
     print(infos)
+    c = get_config("./configs/other_config.json")
+    d = DataSource(data_source_config=c.data_source_configs["data_source_ali"], enabled_GPU_types={GPUType.RTX_2080Ti})
+    print(d.job_specs_dict)
+    e = DataSource(data_source_config=c.data_source_configs["data_source_ali"], enabled_GPU_types={GPUType.RTX_2080Ti})
+    print(e.job_specs_dict)
 
 
 if __name__ == '__main__':

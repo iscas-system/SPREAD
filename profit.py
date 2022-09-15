@@ -22,11 +22,12 @@ class ProfitComprehensiveUtilization(ProfitCalculator):
     @staticmethod
     def calculate(data_source: DataSource, job_ID: str, GPU_type: GPUType, job_lack_supply: Optional[Dict[str, int]]=None) -> float:
         job_spec = data_source.get_job_spec(job_ID)
-        worker_count = 1 if job_spec.plan_GPU <= 100 else job_spec.plan_GPU // 100
+        worker_count = job_spec.plan_worker_count
         _, normalized_memory = data_source.get_job_task_memory(job_ID=job_ID, worker_count=worker_count)
-        total_memory = GPUType.normalized_memory(GPU_type) * worker_count
-        mem_proportion = normalized_memory / total_memory
-        comp_proportion = job_spec.plan_GPU / 100.
+        normalized_memory *= worker_count
+        total_normalized_memory = GPUType.normalized_memory(GPU_type)
+        mem_proportion = normalized_memory / total_normalized_memory
+        comp_proportion = job_spec.plan_comp * worker_count / CompCapacity
         if job_lack_supply is not None and job_ID in job_lack_supply:
             lack_supply = job_lack_supply[job_ID]
             lack_supply_comp_proportion = (lack_supply * (100 // CompCapacity)) / 100.

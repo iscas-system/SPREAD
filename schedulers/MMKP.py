@@ -7,7 +7,7 @@ import numpy as np
 
 from cluster import TaskAssignment, Assignments
 from log import info
-from object import GPUType, CompCapacity, Task
+from object import GPUType, CompCapacity, Task, Job
 from profit import get_profit_calculator
 from scheduler import Scheduler
 from .RR import RRScheduler
@@ -32,7 +32,7 @@ class MMKPScheduler(Scheduler):
             MMKPScheduler.ScoreWeights((0, 0.2), 4, 1),
             MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 4)
         ]
-        self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 1.5)
+        self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 1)
         self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 2)
         self.direct_saturate_factor = self.config.get("direct_saturate_factor", 8)
         self.non_preemptive_direct_saturate_factor = self.config.get("non_preemptive_direct_saturate_factor", 128)
@@ -90,18 +90,19 @@ class MMKPScheduler(Scheduler):
             return splitting_total_normalized_resource_req / direct_total_normalized_resource_req - 1
 
         def _comprehensive_score(self) -> float:
-            if self.direct_plan is None:
-                return 0.
-            resource_score = self.resource_score
-            balance_score = self.balance_score
-            balance_score_increment = balance_score - self.direct_plan.balance_score
-            return balance_score_increment
-            # for score_weight in self.score_weights:
-            #     r = score_weight.effective_resource_score_range
-            #     if r[0] < resource_score < r[1]:
-            #         score = score_weight.balance_weight * balance_score_increment + score_weight.resource_weight * resource_score
-            #         return score
-            assert False
+            return self.resource_score
+            # if self.direct_plan is None:
+            #     return 0.
+            # resource_score = self.resource_score
+            # balance_score = self.balance_score
+            # balance_score_increment = balance_score - self.direct_plan.balance_score
+            # return balance_score_increment
+            # # for score_weight in self.score_weights:
+            # #     r = score_weight.effective_resource_score_range
+            # #     if r[0] < resource_score < r[1]:
+            # #         score = score_weight.balance_weight * balance_score_increment + score_weight.resource_weight * resource_score
+            # #         return score
+            # assert False
 
     def use_round_robin(self, all_job_IDs: Set[str], total_normalized_resource: float, preemptive: bool) -> Optional[
         Tuple[Assignments, Optional[Any]]]:
@@ -120,10 +121,13 @@ class MMKPScheduler(Scheduler):
         if total_consumed_normalized_resource < total_normalized_resource * self.use_round_robin_resource_ratio:
             info("MMKP: Jobs are not enough to saturate, use RR instead.")
             sche = RRScheduler(self.name, self.scheduler_enum, None, None, self.data_source, self.cluster, {})
-            return sche.do_assign(preemptive, 0)
+            return sche.do_assign(preemptive, 0, set())
         return None
 
-    def do_assign(self, preemptive: bool, now: int) -> Tuple[Assignments, Optional[Any]]:
+    def reuse_assignments(self):
+        return self.cluster.assignments.clone(), MMKPScheduler.build_statistics()
+
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
         GPU_size = len(self.cluster.GPU_IDs)
         total_comp = GPU_size * CompCapacity
         GPU_mem = GPUType.normalized_memory(self.GPU_type)
@@ -151,9 +155,12 @@ class MMKPScheduler(Scheduler):
                     comp, mem = GPU_comp_mem_capacity[GPU_ID]
                     GPU_comp_mem_capacity[GPU_ID] = comp - task_assignment.comp_req, mem - task_assignment.memory
         total_remain_normalized_resource = total_normalized_comp - total_normalized_consumed_comp + total_normalized_mem - total_normalized_consumed_mem
-        info(f"MMKP starts do assign, preemptive: {preemptive}, total_normalized_comp: {total_normalized_comp}, "
+        info(f"MMKP starts do assign, preemptive: {preemptive}, done jobs between preemption: {done_jobs_between_preemption}, total_normalized_comp: {total_normalized_comp}, "
              f"total_normalized_mem: {total_normalized_mem}, total_normalized_consumed_comp: {total_normalized_consumed_comp},"
              f"total_normalized_consumed_mem: {total_normalized_consumed_mem}, total_remain_normalized_resource: {total_remain_normalized_resource}")
+        if len(done_jobs_between_preemption) == 0 and now != 0:
+            info("MMKP reuse last scheduling assignments")
+            return self.reuse_assignments()
         use_round_robin_result = self.use_round_robin(all_job_IDs=set(all_job_IDs),
                                                       total_normalized_resource=total_remain_normalized_resource,
                                                       preemptive=preemptive)
@@ -247,7 +254,7 @@ class MMKPScheduler(Scheduler):
             supplied_mem = splitting_assignment_plan.mem_req * splitting_assignment_plan.worker_count - direct_assignment_plan.mem_req * direct_assignment_plan.worker_count
             total_splitting_job_supplied_mem += supplied_mem
             job_ID_to_supplied_mem[splitting_job_ID] = supplied_mem
-        assignments = assignments.supplement_over_supply()
+        # assignments = assignments.supplement_over_supply()
         statistics = MMKPScheduler.build_statistics(solver_durations=solver_durations,
                                                     splitting_plans=splitting_plans,
                                                     total_splitting_job_supplied_comp=total_splitting_job_supplied_comp,
