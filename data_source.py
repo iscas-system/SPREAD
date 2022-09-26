@@ -367,8 +367,8 @@ class DataSource:
     @staticmethod
     def plan_gpu_converter_ali_fix(plan_GPU: int):
         convert_dict: Dict[int, List] = {
-            100: [65, 70, 75, 80, 85, 90, 95, 100, 100, 100],
-            50: [40, 45, 50, 55, 60, 65],
+            100: [65, 70, 75, 80, 85, 90, 95, 100, 100, 100, 100],
+            50: [40, 45, 50, 55, 60],
             25: [15, 20, 25, 30, 35],
             20: [10, 15, 20, 25, 30],
             10: [5, 10, 15, 20],
@@ -442,11 +442,11 @@ def do_test():
                                           batch_size=4)
     MonoJobExecInfoLoader.extract(infos, worker_count=2)
     print(infos)
-    c = get_config("./configs/other_config.json")
-    d = DataSource(data_source_config=c.data_source_configs["data_source_ali"], enabled_GPU_types={GPUType.RTX_2080Ti})
-    print(d.job_specs_dict)
-    e = DataSource(data_source_config=c.data_source_configs["data_source_ali"], enabled_GPU_types={GPUType.RTX_2080Ti})
-    print(e.job_specs_dict)
+    c = get_config("./configs/test_config.json")
+    d = DataSource(data_source_config=c.data_source_configs["data_source_ali_fix"], enabled_GPU_types={GPUType.RTX_2080Ti})
+    print(d.job_specs[0].total_iterations)
+    e = DataSource(data_source_config=c.data_source_configs["data_source_ali_fix"], enabled_GPU_types={GPUType.RTX_2080Ti})
+    print(e.job_specs[0].total_iterations)
 
 
 if __name__ == '__main__':

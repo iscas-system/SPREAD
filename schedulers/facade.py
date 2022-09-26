@@ -9,6 +9,9 @@ from .RR import RRScheduler
 from .kube_share import KubeShareScheduler
 from .tiresias import TiresiasScheduler
 from .best_fit import BestFitScheduler
+from .Gavel import GavelScheduler
+from .kubernetes import KubeScheduler
+
 
 #                  name: str,
 #                  scheduler_enum: SchedulerEnum,
@@ -33,7 +36,9 @@ scheduler_init_funcs: Dict[SchedulerEnum, Optional[Callable[[
     SchedulerEnum.Tiresias: TiresiasScheduler,
     SchedulerEnum.Optimus: None,
     SchedulerEnum.KubeShare: KubeShareScheduler,
-    SchedulerEnum.BestFit: BestFitScheduler
+    SchedulerEnum.BestFit: BestFitScheduler,
+    SchedulerEnum.Gavel: GavelScheduler,
+    SchedulerEnum.Kubernetes: KubeScheduler
 }
 
 

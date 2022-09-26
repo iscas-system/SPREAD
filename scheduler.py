@@ -70,8 +70,9 @@ class Scheduler(ABC):
             for job in self.cluster.jobs.values():
                 if job.job_ID not in self.cluster.assignments.job_ID_to_task_assignments:
                     job_IDs.add(job.job_ID)
+            job_IDs = sorted(list(job_IDs))
         else:
-            job_IDs = list(self.cluster.jobs.keys())
+            job_IDs = sorted(list(self.cluster.jobs.keys()))
         return GPU_ID_to_task_assignments, job_IDs
 
     def build_snapshot_record_parameters(self) -> SnapshotRecordParameters:

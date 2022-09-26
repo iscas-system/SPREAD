@@ -111,7 +111,7 @@ class JobSpec:
         self.submit_time: int = submit_time
         self.plan_GPU: int = plan_GPU
         self.plan_worker_count: int = worker_count
-        self.plan_comp = plan_GPU // (100//CompCapacity)
+        self.plan_comp = (plan_GPU // (100//CompCapacity)) // self.plan_worker_count
         self.run_time: int = run_time
         self.total_iterations: float = total_iterations
 
@@ -196,7 +196,14 @@ class SchedulerEnum(Enum):
     Optimus = "Optimus"
     KubeShare = "KubeShare"
     BestFit = "BestFit"
+    Gavel = "Gavel"
+    Kubernetes = "Kubernetes"
 
+
+class SimulatingMethod(Enum):
+    Trace = "Trace"
+    RandomPlacement = "RandomPlacement"
+    RandomPlacementSelector = "RandomPlace"
 
 class SolverEnum(Enum):
     MMKP = "MMKP"

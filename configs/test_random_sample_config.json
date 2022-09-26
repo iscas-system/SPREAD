@@ -1,10 +1,11 @@
 {
   "license_path": null,
   "use_default_license": true,
-  "session_id": "trace",
-  "simulating_method": "Trace",
+  "session_id": "random_placement",
+  "simulating_method": "RandomPlacement",
   "simulating_method_config": {
-    "repeat": 100
+    "repeat": 100,
+    "job_size": 100
   },
   "cluster_configs": {
     "cluster_1": {
@@ -324,6 +325,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "RoundRobin_strict", "BestFit", "KubeShare", "Tiresias", "Kubernetes", "Gavel"
+    "Gavel"
   ]
 }

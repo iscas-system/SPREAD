@@ -1,6 +1,11 @@
 {
   "license_path": null,
   "use_default_license": true,
+  "session_id": "trace",
+  "simulating_method": "Trace",
+  "simulating_method_config": {
+    "repeat": 100
+  },
   "cluster_configs": {
     "cluster_1": {
       "GPUs": {
@@ -12,13 +17,35 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
       ],
       "enable_plot": true
+    },
+    "cluster_2": {
+      "GPUs": {
+        "RTX_2080Ti": 10
+      },
+      "enabled_scheduler_names": [
+        "MMKP_best_effort",
+        "MMKP_strict",
+        "RoundRobin_strict",
+        "RoundRobin_best_effort",
+        "KubeShare",
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
+      ],
+      "enable_plot": false
     }
   },
   "enabled_cluster_configs": [
-    "cluster_1"
+    "cluster_2"
   ],
   "models": {
     "ResNet50": {
@@ -71,7 +98,7 @@
         0
       ]
     },
-    "VGG16": {
+    "EfficientNet": {
       "batch_sizes": [
         8,
         16,
@@ -112,7 +139,11 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
       ],
       "enable_plot": true
     },
@@ -131,7 +162,11 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
       ],
       "enable_plot": true
     },
@@ -150,7 +185,11 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
       ],
       "enable_plot": true
     },
@@ -169,7 +208,11 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
       ],
       "enable_plot": true
     },
@@ -188,13 +231,17 @@
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
-        "Tiresias"
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes"
       ],
       "enable_plot": true
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_fix", "data_source_ali", "data_source_uniform", "data_source_high", "data_source_low"
+    "data_source_low"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -202,6 +249,17 @@
       "name": "MMKP_strict",
       "scheduler_enum": "MMKP",
       "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization"
+      }
+    },
+    {
+      "name": "MMKP_strict_no_split",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_split": false,
         "strict": true,
         "priority_type": "SRSF",
         "solver_enum": "MMKP",
@@ -252,6 +310,16 @@
     {
       "name": "BestFit",
       "scheduler_enum": "BestFit",
+      "config": {}
+    },
+    {
+      "name": "Gavel",
+      "scheduler_enum": "Gavel",
+      "config": {}
+    },
+    {
+      "name": "Kubernetes",
+      "scheduler_enum": "Kubernetes",
       "config": {}
     }
   ],

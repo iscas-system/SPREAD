@@ -11,7 +11,7 @@ from common import get_json_dir
 from config import get_config, ClusterConfig, DataSourceConfig
 from data_source import DataSource
 from log import info
-from object import Job, SchedulerEnum, ProfitEnum, SolverEnum
+from object import Job, SchedulerEnum, ProfitEnum, SolverEnum, SimulatingMethod
 from plot_assignment import do_snapshot_record_plot
 from scheduler import Scheduler
 from schedulers import init_scheduler
@@ -22,6 +22,8 @@ class Simulator:
                  data_source_config: DataSourceConfig,
                  cluster_config: ClusterConfig):
         c = get_config()
+        self.simulating_method: SimulatingMethod = c.simulating_method
+        self.simulating_method_config: Dict = c.simulating_method_config
         self.data_source_config: DataSourceConfig = data_source_config
         self.data_source: DataSource = DataSource(data_source_config=data_source_config,
                                                   enabled_GPU_types=cluster_config.GPU_types)
@@ -54,17 +56,24 @@ class Simulator:
         self.next_job_idx = 0
         self.last_preemptive_time = 0
 
-    def play(self):
+    def play_trace(self):
         for scheduler in self.schedulers:
-            info(f"Simulator playing for scheduler: {scheduler.name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
+            info(f"Simulator playing trace for scheduler: {scheduler.name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
             self.__init_play_status()
-            self.play_for_scheduler(scheduler)
+            self.play_trace_for_scheduler(scheduler)
 
-    def play_for_scheduler(self, scheduler: Scheduler):
+    def play_random_placement(self):
+        for scheduler in self.schedulers:
+            info(f"Simulator playing random placement for scheduler: {scheduler.name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
+            self.__init_play_status()
+            self.play_random_placement_for_scheduler(scheduler)
+
+    def play_trace_for_scheduler(self, scheduler: Scheduler):
+        c = get_config()
         last_assignments = scheduler.cluster.assignments
         time_str = datetime.datetime.now().strftime(
             f"%Y-%m-%d-%H-%M-%S")
-        session_id = f"Player_{self.cluster_config.name}_{self.data_source_config.name}_{scheduler.name}_{time_str}"
+        session_id = f"Player_{c.session_id}_{self.cluster_config.name}_{self.data_source_config.name}_{scheduler.name}_{time_str}"
         record = PlayRecord(session_id=session_id, scheduler_name=scheduler.name,
                             scheduler_enum=scheduler.scheduler_enum, data_source_config=self.data_source_config,
                             data_source=self.data_source, cluster_config=self.cluster_config)
@@ -121,6 +130,62 @@ class Simulator:
             record.add_schedule_reports(scheduler_reports)
             record.add_assignments_statistics(
                 scheduler.cluster.assignments.statistics(preemptive=is_preemptive_interval, now=self.now, cluster=scheduler.cluster, data_source=self.data_source))
+
+            info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
+            info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
+            job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in
+                                              self.job_remaining_durations(scheduler.cluster).items()}
+            info(f"Simulator: running job remaining durations (second): {job_remaining_duration_seconds}")
+        record.save()
+
+    def play(self):
+        if self.simulating_method == SimulatingMethod.Trace:
+            self.play_trace()
+        elif self.simulating_method == SimulatingMethod.RandomPlacement:
+            self.play_random_placement()
+
+    def play_random_placement_for_scheduler(self, scheduler: Scheduler):
+        c = get_config()
+        time_str = datetime.datetime.now().strftime(
+            f"%Y-%m-%d-%H-%M-%S")
+        session_id = f"Player_{c.session_id}_{self.cluster_config.name}_{self.data_source_config.name}_{scheduler.name}_{time_str}"
+        record = PlayRecord(session_id=session_id, scheduler_name=scheduler.name,
+                            scheduler_enum=scheduler.scheduler_enum, data_source_config=self.data_source_config,
+                            data_source=self.data_source, cluster_config=self.cluster_config)
+        np.random.seed(1)
+        sample_job_size = self.simulating_method_config.get("job_size", 30)
+        for i in range(self.simulating_method_config.get("repeat", 100)):
+            scheduler.cluster.assignments = Assignments()
+            scheduler.cluster.jobs.clear()
+            info(f"Simulator play random placement: starts iteration: {i}")
+            job_specs = list(self.data_source.job_specs)
+            np.random.shuffle(job_specs)
+            job_specs = job_specs[:sample_job_size]
+            submit_jobs: Set[Job] = set()
+            for job_spec in job_specs:
+                job = Job(job_ID=job_spec.job_ID, remaining_iterations=job_spec.total_iterations)
+                scheduler.cluster.submit(job)
+                submit_jobs.add(job)
+            submit_job_IDs = [job.job_ID for job in submit_jobs]
+            info(f"Simulator submit job IDs = {submit_job_IDs}")
+            before = time_ns()
+            assignments, scheduler_reports = scheduler.do_assign(preemptive=True, now=self.now, done_jobs_between_preemption=set())
+            end = time_ns()
+            info(f"Simulator random placement scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
+            scheduler.cluster.assignments = assignments
+            scheduler.cluster.ensure_start(self.now)
+
+            snapshot_record_parameters = scheduler.build_snapshot_record_parameters()
+            enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
+            snapshot_record_parameters.do_plot = enable_plot
+
+            do_snapshot_record_plot(session_id=session_id, is_preemptive_interval=True, snapshot_record_parameters=snapshot_record_parameters)
+            running_status = scheduler.cluster.assignments.running_status(data_source=self.data_source)
+
+            record.add_schedule_overhead(end - before)
+            record.add_schedule_reports(scheduler_reports)
+            record.add_assignments_statistics(
+                scheduler.cluster.assignments.statistics(preemptive=True, now=self.now, cluster=scheduler.cluster, data_source=self.data_source))
 
             info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
             info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
@@ -271,6 +336,7 @@ class PlayRecord:
         d["preemptive_records"] = self.preemptive_records
         d["done_records"] = done_records
         d["schedule_overheads"] = self.schedule_overheads
+        d["schedule_reports"] = self.schedule_reports
         d["job_specs"] = [job_spec.to_dict() for job_spec in self.data_source.job_specs]
         d["assignment_statistics"] = self.assignments_statistics
 

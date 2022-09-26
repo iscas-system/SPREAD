@@ -41,7 +41,8 @@ def do_snapshot_record_plot(session_id: str, is_preemptive_interval: bool, snaps
     with open(json_filepath, 'w') as f:
         js = snapshot_record_parameters.json(indent='\t')
         f.write(js)
-    plot_assignment(snapshot_record_parameters, filepath=fig_filepath)
+    if snapshot_record_parameters.do_plot:
+        plot_assignment(snapshot_record_parameters, filepath=fig_filepath)
     return {}
 
 
@@ -158,7 +159,7 @@ def plot_assignment(recorder_parameters: SnapshotRecordParameters, filepath: str
     width = 0.4
     split_bar_width = 0.01 / 2
 
-    hatch = r"-\\"
+    hatch = r"/"
     oversupply_hatch = r"**"
     lack_supply_hatch = r"oo"
 

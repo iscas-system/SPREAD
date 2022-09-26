@@ -30,7 +30,7 @@ class RRScheduler(Scheduler):
             job_IDs = list(self.cluster.jobs.keys())
         job_IDs = Sorter.sort(jobs=[self.cluster.jobs[job_ID] for job_ID in job_IDs], data_source=self.data_source,
                               priority_type=self.priority_type)
-        job_IDs = job_IDs[:300]
+        job_IDs = job_IDs[:100]
         assignments = RRScheduler.assign_jobs(self.strict, self.data_source, job_IDs, GPU_IDs, self.GPU_type, GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
 

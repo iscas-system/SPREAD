@@ -4,7 +4,7 @@ import os
 import sys
 from typing import Tuple, Dict, List, Optional, Set
 
-from object import ModelName, model_name_strs, SchedulerEnum, GPUType
+from object import ModelName, model_name_strs, SchedulerEnum, GPUType, SimulatingMethod
 
 
 class Config:
@@ -124,7 +124,10 @@ class Config:
         self.license_path: Optional[str] = d.get("license_path", None)
         self.using_default_license: bool = d["use_default_license"]
         self.__init_license()
+        self.session_id: str = d["session_id"]
         self.enabled_scheduler_names: List[str] = d["enabled_scheduler_names"]
+        self.simulating_method: SimulatingMethod = SimulatingMethod(d.get("simulating_method", "Trace"))
+        self.simulating_method_config: Dict = d.get("simulating_method_config", dict())
 
         self.data_source_configs: Dict[str, 'DataSourceConfig'] = dict()
         for cn, c in d["data_source_configs"].items():

@@ -1,10 +1,11 @@
 {
   "license_path": null,
   "use_default_license": true,
-  "session_id": "trace",
-  "simulating_method": "Trace",
+  "session_id": "random_placement",
+  "simulating_method": "RandomPlacement",
   "simulating_method_config": {
-    "repeat": 100
+    "repeat": 100,
+    "job_size": 25
   },
   "cluster_configs": {
     "cluster_1": {
@@ -19,9 +20,7 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": true
     },
@@ -37,9 +36,7 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": false
     }
@@ -141,9 +138,7 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": true
     },
@@ -164,9 +159,7 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": true
     },
@@ -187,9 +180,7 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": true
     },
@@ -210,9 +201,7 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": true
     },
@@ -233,15 +222,17 @@
         "KubeShare",
         "Tiresias",
         "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_no_split"
       ],
       "enable_plot": true
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_fix", "data_source_ali", "data_source_uniform", "data_source_high", "data_source_low"
+    "data_source_ali_fix",
+    "data_source_ali",
+    "data_source_uniform",
+    "data_source_high",
+    "data_source_low"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -311,19 +302,9 @@
       "name": "BestFit",
       "scheduler_enum": "BestFit",
       "config": {}
-    },
-    {
-      "name": "Gavel",
-      "scheduler_enum": "Gavel",
-      "config": {}
-    },
-    {
-      "name": "Kubernetes",
-      "scheduler_enum": "Kubernetes",
-      "config": {}
     }
   ],
   "enabled_scheduler_names": [
-    "RoundRobin_strict", "BestFit", "KubeShare", "Tiresias", "Kubernetes", "Gavel"
+    "MMKP_strict_no_split"
   ]
 }

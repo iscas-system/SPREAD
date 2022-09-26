@@ -1,10 +1,11 @@
 {
   "license_path": null,
   "use_default_license": true,
-  "session_id": "trace",
-  "simulating_method": "Trace",
+  "session_id": "selectors",
+  "simulating_method": "RandomPlacement",
   "simulating_method_config": {
-    "repeat": 100
+    "repeat": 100,
+    "job_size": 150
   },
   "cluster_configs": {
     "cluster_1": {
@@ -20,8 +21,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": true
     },
@@ -38,8 +39,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": false
     }
@@ -142,8 +143,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": true
     },
@@ -165,8 +166,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": true
     },
@@ -188,8 +189,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": true
     },
@@ -211,8 +212,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": true
     },
@@ -234,14 +235,18 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select"
       ],
       "enable_plot": true
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_fix", "data_source_ali", "data_source_uniform", "data_source_high", "data_source_low"
+    "data_source_ali_fix",
+    "data_source_ali",
+    "data_source_uniform",
+    "data_source_high",
+    "data_source_low"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -252,7 +257,9 @@
         "strict": true,
         "priority_type": "SRSF",
         "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization"
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
       }
     },
     {
@@ -263,7 +270,37 @@
         "strict": true,
         "priority_type": "SRSF",
         "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization"
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
+      }
+    },
+    {
+      "name": "MMKP_strict_random_select",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_split": true,
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "selector": "random",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
+      }
+    },
+    {
+      "name": "MMKP_strict_no_split_random_select",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_split": false,
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "selector": "random",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
       }
     },
     {
@@ -311,19 +348,9 @@
       "name": "BestFit",
       "scheduler_enum": "BestFit",
       "config": {}
-    },
-    {
-      "name": "Gavel",
-      "scheduler_enum": "Gavel",
-      "config": {}
-    },
-    {
-      "name": "Kubernetes",
-      "scheduler_enum": "Kubernetes",
-      "config": {}
     }
   ],
   "enabled_scheduler_names": [
-    "RoundRobin_strict", "BestFit", "KubeShare", "Tiresias", "Kubernetes", "Gavel"
+    "MMKP_strict_no_split"
   ]
 }

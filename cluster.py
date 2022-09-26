@@ -366,19 +366,25 @@ class Assignments:
         )
 
     def running_status(self, data_source: DataSource) -> Dict:
-        job_IDs, dist_jobs = self.deployed_jobs()
+        job_IDs, dist_jobs, spread_jobs = self.deployed_jobs(data_source)
         return {
             "running_jobs": len(job_IDs),
             "dist_jobs": len(dist_jobs),
+            "spread_jobs": len(spread_jobs)
         }
 
-    def deployed_jobs(self) -> Tuple[Set[str], Set[str]]:
+    def deployed_jobs(self, data_source: DataSource) -> Tuple[Set[str], Set[str], Set[str]]:
         job_IDs = set(self.job_ID_to_task_assignments.keys())
         dist_jobs = set()
+        spread_jobs = set()
         for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
-            if len(task_assignments) > 1:
+            worker_count = len(task_assignments)
+            if worker_count > 1:
                 dist_jobs.add(job_ID)
-        return job_IDs, dist_jobs
+            job_spec = data_source.get_job_spec(job_ID)
+            if worker_count > job_spec.plan_worker_count:
+                spread_jobs.add(job_ID)
+        return job_IDs, dist_jobs, spread_jobs
 
     def remove_jobs(self, job_IDs: Set[str]) -> 'Assignments':
         job_ID_to_task_assignments = deepcopy(self.job_ID_to_task_assignments)
@@ -411,7 +417,7 @@ class Assignments:
         job_real_mem, total_real_mem = self.get_job_real_mem_utilization(data_source=data_source)
         cluster_real_total_mem = cluster.get_GPU_total_real_mem()
         profit = self.calc_profits(data_source=data_source, profit_calculator=get_profit_calculator(ProfitEnum.ComprehensiveUtilization))
-        deployed_jobs, deployed_dist_jobs = self.deployed_jobs()
+        deployed_jobs, deployed_dist_jobs, deployed_spread_jobs = self.deployed_jobs(data_source)
 
         job_ID_to_task_assignments: DefaultDict = defaultdict(list)
         for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
@@ -422,6 +428,8 @@ class Assignments:
                 d["memory"] = task_assignment.memory
                 d["task_ID"] = task_assignment.task.task_ID
                 d["job_ID"] = task_assignment.task.job_ID
+                d["GPU_ID"] = task_assignment.GPU_ID
+                d["GPU_type"] = task_assignment.GPU_type
                 d["task_idx"] = task_assignment.task.task_idx
                 job_ID_to_task_assignments[job_ID].append(d)
 
@@ -441,6 +449,7 @@ class Assignments:
             "profit": float(profit),
             "deployed_job_size": len(deployed_jobs),
             "deployed_dist_job_size": len(deployed_dist_jobs),
+            "deployed_spread_job_size": len(deployed_spread_jobs),
             "job_ID_to_task_assignments": job_ID_to_task_assignments,
         }
         return d

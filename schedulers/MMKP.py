@@ -1,6 +1,4 @@
-import time
 from collections import defaultdict
-from copy import deepcopy
 from typing import Tuple, Optional, List, Dict, Set, Any
 
 import numpy as np
@@ -11,8 +9,7 @@ from object import GPUType, CompCapacity, Task, Job
 from profit import get_profit_calculator
 from scheduler import Scheduler
 from .RR import RRScheduler
-from .solver import SolverParameters, SolverParameters3, do_solve_1, do_solve_3, SolverResult
-import threading
+from .solver import SolverParameters, SolverParameters3, do_solve_1, do_solve_3
 
 
 class MMKPScheduler(Scheduler):
@@ -24,19 +21,20 @@ class MMKPScheduler(Scheduler):
             self.resource_weight: float = resource_weight
 
     def _init_config(self):
+        self.use_split = self.config.get("use_split", True)
         self.strict = self.config.get("strict", True)
-        self.throughput_degrade_threshold = self.config.get("throughput_degrade_threshold", 0.1)
+        self.throughput_degrade_threshold = self.config.get("throughput_degrade_threshold", 0.03)
         self.GPU_type = GPUType.RTX_2080Ti
         self.plan_comp_unit = self.config.get("plan_comp_unit", 1)
         self.score_weights = [
             MMKPScheduler.ScoreWeights((0, 0.2), 4, 1),
             MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 4)
         ]
-        self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 1)
-        self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 2)
-        self.direct_saturate_factor = self.config.get("direct_saturate_factor", 8)
+        self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 0.6)
+        self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 1)
+        self.direct_saturate_factor = self.config.get("direct_saturate_factor", 2.5)
         self.non_preemptive_direct_saturate_factor = self.config.get("non_preemptive_direct_saturate_factor", 128)
-        self.non_preemptive_splitting_saturate_factor = self.config.get("non_preemptive_splitting_saturate_factor", 64)
+        self.non_preemptive_splitting_saturate_factor = self.config.get("non_preemptive_splitting_saturate_factor", 32)
         self.saturate_partitions = self.config.get("saturate_partitions", 5)
 
         self.direct_saturate_partitions = self.config.get("direct_saturate_partitions", 20)
@@ -47,6 +45,8 @@ class MMKPScheduler(Scheduler):
         self.solver_duration_upper_bound = self.config.get("solver_duration_upper_bound", 60)
         self.splitting_jobs_proportion = self.config.get("splitting_jobs_proportion", 1.5)
         self.timeout = self.config.get("timeout", 30)
+
+        self.selector = self.config.get("selector", "balance")
 
     class AssignmentPlan:
         def __init__(self,
@@ -127,7 +127,8 @@ class MMKPScheduler(Scheduler):
     def reuse_assignments(self):
         return self.cluster.assignments.clone(), MMKPScheduler.build_statistics()
 
-    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
+        Assignments, Optional[Any]]:
         GPU_size = len(self.cluster.GPU_IDs)
         total_comp = GPU_size * CompCapacity
         GPU_mem = GPUType.normalized_memory(self.GPU_type)
@@ -155,12 +156,10 @@ class MMKPScheduler(Scheduler):
                     comp, mem = GPU_comp_mem_capacity[GPU_ID]
                     GPU_comp_mem_capacity[GPU_ID] = comp - task_assignment.comp_req, mem - task_assignment.memory
         total_remain_normalized_resource = total_normalized_comp - total_normalized_consumed_comp + total_normalized_mem - total_normalized_consumed_mem
-        info(f"MMKP starts do assign, preemptive: {preemptive}, done jobs between preemption: {done_jobs_between_preemption}, total_normalized_comp: {total_normalized_comp}, "
-             f"total_normalized_mem: {total_normalized_mem}, total_normalized_consumed_comp: {total_normalized_consumed_comp},"
-             f"total_normalized_consumed_mem: {total_normalized_consumed_mem}, total_remain_normalized_resource: {total_remain_normalized_resource}")
-        if len(done_jobs_between_preemption) == 0 and now != 0:
-            info("MMKP reuse last scheduling assignments")
-            return self.reuse_assignments()
+        info(
+            f"MMKP starts do assign, preemptive: {preemptive}, done jobs between preemption: {done_jobs_between_preemption}, total_normalized_comp: {total_normalized_comp}, "
+            f"total_normalized_mem: {total_normalized_mem}, total_normalized_consumed_comp: {total_normalized_consumed_comp},"
+            f"total_normalized_consumed_mem: {total_normalized_consumed_mem}, total_remain_normalized_resource: {total_remain_normalized_resource}")
         use_round_robin_result = self.use_round_robin(all_job_IDs=set(all_job_IDs),
                                                       total_normalized_resource=total_remain_normalized_resource,
                                                       preemptive=preemptive)
@@ -182,16 +181,13 @@ class MMKPScheduler(Scheduler):
             if len(split_assignment_plans_list) > 0:
                 split_assignment_plans[job_ID] = split_assignment_plans_list
 
-        # saturate_splitting_job_IDs = self.select_saturate_jobs_by_balancing_total_comp_mem(
-        #     preemptive=preemptive,
-        #     total_normalized_consumed_comp=total_normalized_consumed_comp,
-        #     total_normalized_consumed_mem=total_normalized_consumed_mem,
-        #     total_normalized_comp=total_normalized_comp,
-        #     total_normalized_mem=total_normalized_mem,
-        #     direct_assignment_plans=direct_assignment_plans,
-        #     split_assignment_plans=split_assignment_plans,
-        #     all_job_IDs=all_job_IDs, splitting=True)
-        saturate_direct_job_IDs = self.select_saturate_jobs_by_balancing_total_comp_mem(
+        if self.selector == "random":
+            selector = self.select_saturate_jobs_by_random
+        elif self.selector == "balance":
+            selector = self.select_saturate_jobs_by_balancing_total_comp_mem
+        else:
+            assert False
+        saturate_direct_job_IDs = selector(
             preemptive=preemptive,
             total_normalized_consumed_comp=total_normalized_consumed_comp,
             total_normalized_consumed_mem=total_normalized_consumed_mem,
@@ -203,9 +199,11 @@ class MMKPScheduler(Scheduler):
         sorted_splittable_assignment_plans, in_splittable_job_IDs = self.extract_split_well_plans_from_job_IDs(
             split_assignment_plans, saturate_direct_job_IDs)
         if len(saturate_direct_job_IDs) > 30:
-            splitting_saturate_ratio = self.direct_saturate_factor // self.splitting_saturate_factor
+            splitting_saturate_ratio = int(self.direct_saturate_factor / self.splitting_saturate_factor)
             sorted_splittable_assignment_plans = sorted_splittable_assignment_plans[:
-                                                                                min(len(sorted_splittable_assignment_plans) // splitting_saturate_ratio, len(sorted_splittable_assignment_plans))]
+                                                                                    min(len(
+                                                                                        sorted_splittable_assignment_plans) // splitting_saturate_ratio,
+                                                                                        len(sorted_splittable_assignment_plans))]
         else:
             sorted_splittable_assignment_plans = sorted_splittable_assignment_plans
         optimum_solver_result, splitting_plans, task_comp_mem_requirements, solver_durations = self.solve_saturate_job_IDs_by_MMKP_2(
@@ -453,7 +451,8 @@ class MMKPScheduler(Scheduler):
             saturate_direct_job_IDs_ = saturate_direct_job_IDs[
                                        :max(0, len(saturate_direct_job_IDs) - i * direct_partition_size)]
             MMKP_1_assignment_plans = [direct_assignment_plans[job_ID] for job_ID in saturate_direct_job_IDs_]
-            info(f"MMKP scheduler start solving all direct assignment plans, plans size: {len(MMKP_1_assignment_plans)}, try count: {i}")
+            info(
+                f"MMKP scheduler start solving all direct assignment plans, plans size: {len(MMKP_1_assignment_plans)}, try count: {i}")
             MMKP_1_solver_result = self.solve_assignment_plans(
                 assignment_plans_=MMKP_1_assignment_plans,
                 job_ID_to_profit=job_ID_to_profit,
@@ -462,16 +461,21 @@ class MMKPScheduler(Scheduler):
                 info(
                     f"MMKP scheduler solves direct assignment failed due to timeout, try count: {i}")
                 continue
-            info(f"MMKP scheduler solves all direct assignment plans with: {MMKP_1_solver_result.duration / 1e9}, try count {i}")
+            info(
+                f"MMKP scheduler solves all direct assignment plans with: {MMKP_1_solver_result.duration / 1e9}, try count {i}")
             MMKP_1_splitting_jobs = list()
             solver_durations.append(MMKP_1_solver_result.duration)
             MMKP_1_task_comp_mem = dict()
             for task_ID, comp_mem_profits in MMKP_1_solver_result.solver_parameters.task_comp_mem_requirements_and_profits.items():
                 MMKP_1_task_comp_mem[task_ID] = comp_mem_profits[0], comp_mem_profits[1]
             break
+        if MMKP_1_solver_result.profit == float(len(self.cluster.GPU_IDs) * 2):
+            info(
+                f"MMKP scheduler direct find optimal profit, use direct only.")
+            return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations
 
-        # if not preemptive:
-        #     return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations
+        if not self.use_split:
+            return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations
 
         MMKP_2_solver_result = None
         MMKP_2_splitting_plans = None
@@ -484,7 +488,8 @@ class MMKPScheduler(Scheduler):
             split_partition_size = len(sorted_splittable_assignment_plans) // self.splitting_saturate_partitions
             if split_partition_size == 0:
                 split_partition_size = 1
-            sorted_splittable_assignment_plans_ = sorted_splittable_assignment_plans[:max(len(sorted_splittable_assignment_plans) - i * split_partition_size, 0)]
+            sorted_splittable_assignment_plans_ = sorted_splittable_assignment_plans[:max(
+                len(sorted_splittable_assignment_plans) - i * split_partition_size, 0)]
 
             if len(sorted_splittable_assignment_plans_) == 0:
                 # 先减split的
@@ -512,7 +517,8 @@ class MMKPScheduler(Scheduler):
                 info(
                     f"MMKP scheduler solves all direct and splitting assignment failed due to timeout, try count: {i}")
                 continue
-            info(f"MMKP scheduler solves all direct assignment plans with: {MMKP_2_solver_result.duration / 1e9}, try count: {i}")
+            info(
+                f"MMKP scheduler solves all direct assignment plans with: {MMKP_2_solver_result.duration / 1e9}, try count: {i}")
             task_max_idx = defaultdict(int)
             MMKP_2_splitting_plans = list()
             for task_ID in MMKP_2_task_comp_mem:
@@ -529,7 +535,6 @@ class MMKPScheduler(Scheduler):
                         worker_count in splitting_work_counts[task.job_ID]:
                     assignment_plan = job_ID_to_worker_count_to_assignment_plan[task.job_ID][worker_count]
                     MMKP_2_splitting_plans.append(assignment_plan)
-
 
             MMKP_2_splitting_plans = list(MMKP_2_splitting_plans)
             solver_durations.append(MMKP_2_solver_result.duration)
@@ -690,7 +695,8 @@ class MMKPScheduler(Scheduler):
             splitting_plans = []
         if solver_durations is None:
             solver_durations = []
-        splitting_job_worker_counts = {splitting_plan.job_ID: splitting_plan.worker_count for splitting_plan in splitting_plans}
+        splitting_job_worker_counts = {splitting_plan.job_ID: splitting_plan.worker_count for splitting_plan in
+                                       splitting_plans}
         return {
             "solver_durations": solver_durations,
             "splitting_job_worker_counts": splitting_job_worker_counts,
@@ -735,7 +741,8 @@ class MMKPScheduler(Scheduler):
 
     def extract_split_well_plans_from_job_IDs(self,
                                               split_assignment_plans: Dict[str, List['MMKPScheduler.AssignmentPlan']],
-                                              job_IDs: List[str]) -> Tuple[List['MMKPScheduler.AssignmentPlan'], List[str]]:
+                                              job_IDs: List[str]) -> Tuple[
+        List['MMKPScheduler.AssignmentPlan'], List[str]]:
         in_splittable_saturate_job_IDs = list()
         splittable_plans: List['MMKPScheduler.AssignmentPlan'] = list()
         for job_ID in job_IDs:
@@ -750,7 +757,7 @@ class MMKPScheduler(Scheduler):
             if in_splittable:
                 continue
         splittable_plans = sorted(splittable_plans,
-                                                    key=lambda plan: plan.comprehensive_score)
+                                  key=lambda plan: plan.comprehensive_score)
         return splittable_plans, in_splittable_saturate_job_IDs
 
     def select_saturate_jobs_by_balancing_total_comp_mem(self,
@@ -799,6 +806,58 @@ class MMKPScheduler(Scheduler):
                 if diff_ < diff:
                     diff = diff_
                     selected_job_ID = job_ID
+            saturate_job_IDs.add(selected_job_ID)
+            total_normalized_consumed_comp += direct_assignment_plans[selected_job_ID].comp_req / CompCapacity
+            total_normalized_consumed_mem += direct_assignment_plans[selected_job_ID].mem_req / GPU_mem
+            new_assigned_total_consumed_comp += direct_assignment_plans[selected_job_ID].comp_req
+            new_assigned_total_consumed_mem += direct_assignment_plans[selected_job_ID].mem_req
+            new_assigned_total_normalized_consumed_resource = new_assigned_total_consumed_comp / CompCapacity + new_assigned_total_consumed_mem / GPU_mem
+            if new_assigned_total_normalized_consumed_resource > (
+                    total_normalized_remain_comp + total_normalized_remain_mem) * saturate_factor:
+                break
+            if len(saturate_job_IDs) == len(all_job_IDs):
+                break
+
+        return list(saturate_job_IDs)
+
+    def select_saturate_jobs_by_random(self,
+                                       preemptive: bool,
+                                       total_normalized_comp: float,
+                                       total_normalized_mem: float,
+                                       total_normalized_consumed_comp: float,
+                                       total_normalized_consumed_mem: float,
+                                       direct_assignment_plans: Dict[
+                                           str, 'MMKPScheduler.AssignmentPlan'],
+                                       split_assignment_plans: Dict[
+                                           str, List['MMKPScheduler.AssignmentPlan']],
+                                       all_job_IDs: List[str],
+                                       splitting: bool
+                                       ) -> List[str]:
+        if splitting:
+            all_job_IDs = list(split_assignment_plans.keys())
+        if len(all_job_IDs) == 0:
+            return list()
+        if splitting:
+            saturate_factor = self.splitting_saturate_factor
+        else:
+            saturate_factor = self.direct_saturate_factor
+        if not preemptive:
+            if splitting:
+                saturate_factor = self.non_preemptive_splitting_saturate_factor
+            else:
+                saturate_factor = self.non_preemptive_direct_saturate_factor
+        saturate_job_IDs: Set[str] = set()
+        GPU_mem = GPUType.normalized_memory(self.GPU_type)
+        total_normalized_remain_comp = total_normalized_comp - total_normalized_consumed_comp
+        total_normalized_remain_mem = total_normalized_mem - total_normalized_consumed_mem
+        new_assigned_total_consumed_comp = 0
+        new_assigned_total_consumed_mem = 0
+        all_job_IDs = list(all_job_IDs)
+        np.random.shuffle(all_job_IDs)
+        for job_ID in all_job_IDs:
+            if job_ID in saturate_job_IDs:
+                continue
+            selected_job_ID = job_ID
             saturate_job_IDs.add(selected_job_ID)
             total_normalized_consumed_comp += direct_assignment_plans[selected_job_ID].comp_req / CompCapacity
             total_normalized_consumed_mem += direct_assignment_plans[selected_job_ID].mem_req / GPU_mem
@@ -868,13 +927,19 @@ class MMKPScheduler(Scheduler):
             direct_plan=None,
             iteration_time=iteration_time)
 
-    def job_splitting_assignment_plans(self, job_ID: str, direct_plan: 'MMKPScheduler.AssignmentPlan') -> List['MMKPScheduler.AssignmentPlan']:
-        splitting_assignment_plan_2 = self.job_splitting_assignment_plan_by_factor(job_ID=job_ID, direct_plan=direct_plan, split_factor=2)
-        splitting_assignment_plan_4 = self.job_splitting_assignment_plan_by_factor(job_ID=job_ID, direct_plan=direct_plan, split_factor=4)
+    def job_splitting_assignment_plans(self, job_ID: str, direct_plan: 'MMKPScheduler.AssignmentPlan') -> List[
+        'MMKPScheduler.AssignmentPlan']:
+        splitting_assignment_plan_2 = self.job_splitting_assignment_plan_by_factor(job_ID=job_ID,
+                                                                                   direct_plan=direct_plan,
+                                                                                   split_factor=2)
+        splitting_assignment_plan_4 = self.job_splitting_assignment_plan_by_factor(job_ID=job_ID,
+                                                                                   direct_plan=direct_plan,
+                                                                                   split_factor=4)
         plans = list(filter(lambda item: item is not None, [splitting_assignment_plan_2, splitting_assignment_plan_4]))
         return plans
 
-    def job_splitting_assignment_plan_by_factor(self, job_ID: str, direct_plan: 'MMKPScheduler.AssignmentPlan', split_factor: int) -> Optional[
+    def job_splitting_assignment_plan_by_factor(self, job_ID: str, direct_plan: 'MMKPScheduler.AssignmentPlan',
+                                                split_factor: int) -> Optional[
         'MMKPScheduler.AssignmentPlan']:
         job_spec = self.data_source.get_job_spec(job_ID=job_ID)
         original_iteration_time = self.data_source.job_iteration_time(job_ID=job_ID, GPU_type=self.GPU_type,
