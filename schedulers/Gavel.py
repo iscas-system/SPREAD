@@ -21,7 +21,7 @@ class GavelScheduler(Scheduler):
 
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
-        job_IDs = job_IDs[:100]
+        job_IDs = job_IDs[-40:]
         assigned_job_IDs = set()
         while True:
             job_ID_to_comp_enough_GPU_ID_com_mem_slice = dict()

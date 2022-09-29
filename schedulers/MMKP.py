@@ -31,7 +31,7 @@ class MMKPScheduler(Scheduler):
             MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 4)
         ]
         self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 0.6)
-        self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 1)
+        self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 0.5)
         self.direct_saturate_factor = self.config.get("direct_saturate_factor", 2.5)
         self.non_preemptive_direct_saturate_factor = self.config.get("non_preemptive_direct_saturate_factor", 128)
         self.non_preemptive_splitting_saturate_factor = self.config.get("non_preemptive_splitting_saturate_factor", 32)
@@ -198,7 +198,7 @@ class MMKPScheduler(Scheduler):
             all_job_IDs=all_job_IDs, splitting=False)
         sorted_splittable_assignment_plans, in_splittable_job_IDs = self.extract_split_well_plans_from_job_IDs(
             split_assignment_plans, saturate_direct_job_IDs)
-        if len(saturate_direct_job_IDs) > 30:
+        if len(saturate_direct_job_IDs) > 10:
             splitting_saturate_ratio = int(self.direct_saturate_factor / self.splitting_saturate_factor)
             sorted_splittable_assignment_plans = sorted_splittable_assignment_plans[:
                                                                                     min(len(
@@ -206,7 +206,7 @@ class MMKPScheduler(Scheduler):
                                                                                         len(sorted_splittable_assignment_plans))]
         else:
             sorted_splittable_assignment_plans = sorted_splittable_assignment_plans
-        optimum_solver_result, splitting_plans, task_comp_mem_requirements, solver_durations = self.solve_saturate_job_IDs_by_MMKP_2(
+        optimum_solver_result, splitting_plans, task_comp_mem_requirements, solver_durations, timeout_count = self.solve_saturate_job_IDs_by_MMKP_2(
             preemptive,
             job_ID_to_profit,
             direct_assignment_plans,
@@ -253,7 +253,8 @@ class MMKPScheduler(Scheduler):
             total_splitting_job_supplied_mem += supplied_mem
             job_ID_to_supplied_mem[splitting_job_ID] = supplied_mem
         # assignments = assignments.supplement_over_supply()
-        statistics = MMKPScheduler.build_statistics(solver_durations=solver_durations,
+        statistics = MMKPScheduler.build_statistics(timeout_count=timeout_count,
+                                                    solver_durations=solver_durations,
                                                     splitting_plans=splitting_plans,
                                                     total_splitting_job_supplied_comp=total_splitting_job_supplied_comp,
                                                     total_splitting_job_supplied_mem=total_splitting_job_supplied_mem,
@@ -443,6 +444,7 @@ class MMKPScheduler(Scheduler):
         MMKP_1_solver_result = None
         MMKP_1_splitting_jobs = None
         MMKP_1_task_comp_mem = None
+        timeout_count = 0
         for i in range(1000):
             # try direct solve, which is fast
             direct_partition_size = len(saturate_direct_job_IDs) // self.direct_saturate_partitions
@@ -460,6 +462,7 @@ class MMKPScheduler(Scheduler):
             if MMKP_1_solver_result is None:
                 info(
                     f"MMKP scheduler solves direct assignment failed due to timeout, try count: {i}")
+                timeout_count += 1
                 continue
             info(
                 f"MMKP scheduler solves all direct assignment plans with: {MMKP_1_solver_result.duration / 1e9}, try count {i}")
@@ -472,15 +475,14 @@ class MMKPScheduler(Scheduler):
         if MMKP_1_solver_result.profit == float(len(self.cluster.GPU_IDs) * 2):
             info(
                 f"MMKP scheduler direct find optimal profit, use direct only.")
-            return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations
+            return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations, timeout_count
 
         if not self.use_split:
-            return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations
+            return MMKP_1_solver_result, MMKP_1_splitting_jobs, MMKP_1_task_comp_mem, solver_durations, timeout_count
 
         MMKP_2_solver_result = None
         MMKP_2_splitting_plans = None
         MMKP_2_task_comp_mem = None
-
         for i in range(1000):
             info(f"MMKP scheduler is trying MMKP 2, try count: {i}")
             # try MMKP 2
@@ -516,6 +518,7 @@ class MMKPScheduler(Scheduler):
             if MMKP_2_solver_result is None or MMKP_2_task_comp_mem is None:
                 info(
                     f"MMKP scheduler solves all direct and splitting assignment failed due to timeout, try count: {i}")
+                timeout_count += 1
                 continue
             info(
                 f"MMKP scheduler solves all direct assignment plans with: {MMKP_2_solver_result.duration / 1e9}, try count: {i}")
@@ -544,7 +547,7 @@ class MMKPScheduler(Scheduler):
         optimum_solver_result = MMKP_1_solver_result if MMKP_1_wins else MMKP_2_solver_result
         splitting_job_IDs = MMKP_1_splitting_jobs if MMKP_1_wins else MMKP_2_splitting_plans
         task_comp_mem = MMKP_1_task_comp_mem if MMKP_1_wins else MMKP_2_task_comp_mem
-        return optimum_solver_result, splitting_job_IDs, task_comp_mem, solver_durations
+        return optimum_solver_result, splitting_job_IDs, task_comp_mem, solver_durations, timeout_count
 
     # def solve_saturate_job_IDs_by_hot_spot(self,
     #                                        job_ID_to_profit: Dict[str, float],
@@ -681,7 +684,8 @@ class MMKPScheduler(Scheduler):
     #         max_profit_trail_count], solver_durations__
 
     @staticmethod
-    def build_statistics(solver_durations=None,
+    def build_statistics(timeout_count=None,
+                         solver_durations=None,
                          splitting_plans=None,
                          total_splitting_job_supplied_comp=0,
                          total_splitting_job_supplied_mem=0,
@@ -698,6 +702,7 @@ class MMKPScheduler(Scheduler):
         splitting_job_worker_counts = {splitting_plan.job_ID: splitting_plan.worker_count for splitting_plan in
                                        splitting_plans}
         return {
+            "timeout_count": timeout_count,
             "solver_durations": solver_durations,
             "splitting_job_worker_counts": splitting_job_worker_counts,
             "total_splitting_job_supplied_comp": total_splitting_job_supplied_comp,

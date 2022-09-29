@@ -148,14 +148,14 @@
       ],
       "enable_plot": true
     },
-    "data_source_ali_fix": {
+    "data_source_ali_fix_new": {
       "data_range": [
         100,
         2000
       ],
       "init_job_data_seed": 1,
       "job_count": 500,
-      "comp_distribution": "ali_fix",
+      "comp_distribution": "ali_fix_new",
       "submit_at_beginning": true,
       "enabled_scheduler_names": [
         "MMKP_best_effort",
@@ -171,15 +171,16 @@
       ],
       "enable_plot": true
     },
-    "data_source_high": {
+    "data_source_phi": {
       "data_range": [
-        100,
+        0,
         2000
       ],
       "init_job_data_seed": 1,
       "job_count": 500,
-      "comp_distribution": "high",
+      "comp_distribution": "phi",
       "submit_at_beginning": true,
+      "submit_table_path": "./data/philly_job_submit_table.csv",
       "enabled_scheduler_names": [
         "MMKP_best_effort",
         "MMKP_strict",
@@ -194,41 +195,19 @@
       ],
       "enable_plot": true
     },
-    "data_source_low": {
+    "data_source_phi_uni": {
       "data_range": [
-        100,
-        2000
-      ],
-      "init_job_data_seed": 1,
-      "job_count": 500,
-      "comp_distribution": "low",
-      "submit_at_beginning": true,
-      "enabled_scheduler_names": [
-        "MMKP_best_effort",
-        "MMKP_strict",
-        "RoundRobin_strict",
-        "RoundRobin_best_effort",
-        "KubeShare",
-        "Tiresias",
-        "BestFit",
-        "MMKP_strict_no_split",
-        "Gavel",
-        "Kubernetes"
-      ],
-      "enable_plot": true
-    },
-    "data_source_uniform": {
-      "data_range": [
-        100,
+        0,
         2000
       ],
       "init_job_data_seed": 1,
       "job_count": 500,
       "comp_distribution": "uniform",
       "submit_at_beginning": true,
+      "submit_table_path": "./data/philly_job_submit_table.csv",
       "enabled_scheduler_names": [
-        "MMKP_strict",
         "MMKP_best_effort",
+        "MMKP_strict",
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
@@ -242,7 +221,10 @@
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_fix", "data_source_ali", "data_source_uniform", "data_source_high", "data_source_low"
+    "data_source_phi_uni",
+    "data_source_phi",
+    "data_source_ali_fix_new",
+    "data_source_ali"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -325,6 +307,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "Gavel"
+    "KubeShare", "Gavel", "BestFit", "Tiresias", "Kubernetes"
   ]
 }

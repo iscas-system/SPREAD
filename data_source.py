@@ -9,7 +9,7 @@ from typing import List, Dict, Optional, Callable, Tuple, Set
 import numpy as np
 import pandas as pd
 from scipy import stats
-
+from log import info
 from config import DataSourceConfig, get_config
 from object import GPUType, JobSpec, ModelName, to_normalized_memory, CompCapacity
 
@@ -227,6 +227,10 @@ class DataSource:
                                )
             self.job_specs.append(job_spec)
             self.job_specs_dict[job_ID] = job_spec
+        plan_GPUs_size = defaultdict(int)
+        for job_spec in self.job_specs:
+            plan_GPUs_size[job_spec.plan_GPU] += 1
+        info(plan_GPUs_size.__str__())
 
     def get_job_spec(self, job_ID: str) -> JobSpec:
         return self.job_specs_dict[job_ID]
@@ -382,21 +386,71 @@ class DataSource:
         return plan_GPU
 
     @staticmethod
+    def plan_gpu_converter_ali_fix_new(plan_GPU: int):
+        convert_normal_distributions = [
+            (0.36, [55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 100, 100, 95, 90, 85, 80, 75, 70, 65, 60, 55]),
+            (0.36 + 0.26, [5, 10, 15, 20, 25, 25, 25, 30, 35, 40, 45]),
+            (0.36 + 0.26 + 0.16, [30, 35, 40, 45, 50, 50, 50, 55, 60, 65, 70]),
+            (0.36 + 0.26 + 0.16 + 0.15, [10, 10, 10, 5, 10, 10, 10, 15, 20, 25, 30]),
+            (0.36 + 0.26 + 0.16 + 0.15 + 0.02, [5, 10, 15, 20, 20, 20, 25, 30, 35]),
+            (1, [200])
+        ]
+        r = np.random.rand()
+        dist_idx = None
+        for idx in range(len(convert_normal_distributions)):
+            if idx == 0:
+                continue
+            if idx == 1 and r < convert_normal_distributions[0][0]:
+                dist_idx = 0
+                break
+            if convert_normal_distributions[idx - 1][0] < r <= convert_normal_distributions[idx][0]:
+                dist_idx = idx
+                break
+        assert dist_idx is not None
+        return DataSource.random_normal_idx(convert_normal_distributions[dist_idx][-1])
+
+
+    @staticmethod
+    def plan_gpu_converter_phi(plan_GPU: int):
+        convert_normal_distributions = [
+            (0.36, [100]),
+            (0.36 + 0.26, [25, 25, 25]),
+            (0.36 + 0.26 + 0.16, [50]),
+            (0.36 + 0.26 + 0.16 + 0.15, [10]),
+            (0.36 + 0.26 + 0.16 + 0.15 + 0.02, [20]),
+            (1, [200])
+        ]
+        r = np.random.rand()
+        dist_idx = None
+        for idx in range(len(convert_normal_distributions)):
+            if idx == 0:
+                continue
+            if idx == 1 and r < convert_normal_distributions[0][0]:
+                dist_idx = 0
+                break
+            if convert_normal_distributions[idx - 1][0] < r <= convert_normal_distributions[idx][0]:
+                dist_idx = idx
+                break
+        assert dist_idx is not None
+        return DataSource.random_normal_idx(convert_normal_distributions[dist_idx][-1])
+
+    @staticmethod
     def plan_gpu_converter_ali_original(plan_GPU: int):
         return plan_GPU
 
     @staticmethod
     def plan_gpu_converter_uniform(plan_GPU: int):
-        distribution = list(np.arange(5, 105, 5))
+        distribution = list(reversed(np.arange(5, 105, 5)))
         distribution += [200]
         return np.random.choice(distribution)
 
     @staticmethod
-    def random_normal_idx(distribution: List):
+    def random_normal_idx(distribution: List, std: Optional[float]=None):
         c = len(distribution)
         indices = np.arange(0, c)
         mean = np.mean(indices)
-        std = np.std(indices)
+        if std is None:
+            std = 2
         idx = np.random.normal(mean, std)
         idx = int(np.around(idx))
         if idx < 0:
@@ -407,13 +461,13 @@ class DataSource:
 
     @staticmethod
     def plan_gpu_converter_low(plan_GPU: int):
-        distribution = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
-        return DataSource.random_normal_idx(distribution)
+        distribution = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
+        return DataSource.random_normal_idx(distribution, std=3)
 
     @staticmethod
     def plan_gpu_converter_high(plan_GPU: int):
-        distribution = [45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
-        return DataSource.random_normal_idx(distribution)
+        distribution = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
+        return DataSource.random_normal_idx(distribution, std=3)
 
     @staticmethod
     def plan_gpu_converter_comp_all_100(plan_GPU: int):
@@ -421,7 +475,7 @@ class DataSource:
 
     @staticmethod
     def run_time_converter(run_time: int):
-        while run_time < 60 * 60:
+        while run_time < 30 * 60:
             run_time *= 2
         return run_time
 
@@ -434,6 +488,8 @@ class DataSource:
             "uniform": DataSource.plan_gpu_converter_uniform,
             "low": DataSource.plan_gpu_converter_low,
             "high": DataSource.plan_gpu_converter_high,
+            "ali_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
+            "phi": DataSource.plan_gpu_converter_phi
         }[comp_distribution](plan_GPU)
 
 

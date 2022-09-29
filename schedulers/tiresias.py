@@ -27,7 +27,7 @@ class TiresiasScheduler(Scheduler):
         for job_ID in job_IDs:
             JAS_list.append(JAS(job_ID=job_ID, attained_service=self.job_attained_service[job_ID]))
         JAS_list.sort(key=lambda jas: jas.attained_service)
-        JAS_list = JAS_list[:300]
+        JAS_list = JAS_list[-40:]
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
         for jas in JAS_list:
