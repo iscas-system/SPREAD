@@ -138,6 +138,32 @@
       ],
       "enable_plot": true
     },
+    "data_source_ali_uni": {
+      "data_range": [
+        0,
+        2000
+      ],
+      "init_job_data_seed": 2,
+      "job_count": 500,
+      "comp_distribution": "uniform",
+      "submit_at_beginning": true,
+      "enabled_scheduler_names": [
+        "MMKP_best_effort",
+        "MMKP_strict",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
+        "RoundRobin_strict",
+        "RoundRobin_best_effort",
+        "KubeShare",
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes",
+        "MMKP_strict_rand_variants"
+      ],
+      "enable_plot": true
+    },
     "data_source_phi": {
       "data_range": [
         0,
@@ -175,10 +201,37 @@
         "MMKP_strict_15"
       ],
       "enable_plot": true
+    },
+    "data_source_phi_fix_new": {
+      "data_range": [
+        0,
+        2000
+      ],
+      "init_job_data_seed": 2,
+      "job_count": 500,
+      "comp_distribution": "ali_fix_new",
+      "submit_at_beginning": true,
+      "submit_table_path": "./data/philly_job_submit_table.csv",
+      "enabled_scheduler_names": [
+        "MMKP_best_effort",
+        "MMKP_strict",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
+        "RoundRobin_strict",
+        "RoundRobin_best_effort",
+        "KubeShare",
+        "Tiresias",
+        "BestFit",
+        "MMKP_strict_no_split",
+        "Gavel",
+        "Kubernetes",
+        "MMKP_strict_rand_variants"
+      ],
+      "enable_plot": true
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali"
+    "data_source_ali_uni", "data_source_phi_fix_new"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [

@@ -80,6 +80,10 @@ class Simulator:
 
         iteration = 0
         done_jobs_between_preemption = set()
+        simulation_rand_seed = scheduler.config.get("simulation_rand_seed", None)
+        if simulation_rand_seed is not None:
+            info(f"simulator: using random seed: {simulation_rand_seed}")
+            np.random.seed(simulation_rand_seed)
         while True:
             info(f"Simulator: starts iteration: {iteration}")
             iteration += 1
@@ -153,6 +157,10 @@ class Simulator:
                             scheduler_enum=scheduler.scheduler_enum, data_source_config=self.data_source_config,
                             data_source=self.data_source, cluster_config=self.cluster_config)
         np.random.seed(1)
+        simulation_rand_seed = scheduler.config.get("simulation_rand_seed", None)
+        if simulation_rand_seed is not None:
+            info(f"simulator: using random seed: {simulation_rand_seed}")
+            np.random.seed(simulation_rand_seed)
         sample_job_size = self.simulating_method_config.get("job_size", 30)
         for i in range(self.simulating_method_config.get("repeat", 100)):
             scheduler.cluster.assignments = Assignments()

@@ -45,6 +45,7 @@ class MMKPScheduler(Scheduler):
         self.solver_duration_upper_bound = self.config.get("solver_duration_upper_bound", 60)
         self.splitting_jobs_proportion = self.config.get("splitting_jobs_proportion", 1.5)
         self.timeout = self.config.get("timeout", 30)
+        self.rand_variants = self.config.get("rand_variants", False)
 
         self.selector = self.config.get("selector", "balance")
 
@@ -763,6 +764,8 @@ class MMKPScheduler(Scheduler):
                 continue
         splittable_plans = sorted(splittable_plans,
                                   key=lambda plan: plan.comprehensive_score)
+        if self.rand_variants:
+            np.random.shuffle(splittable_plans)
         return splittable_plans, in_splittable_saturate_job_IDs
 
     def select_saturate_jobs_by_balancing_total_comp_mem(self,

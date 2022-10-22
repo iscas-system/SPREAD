@@ -1,0 +1,522 @@
+{
+  "license_path": null,
+  "use_default_license": true,
+  "session_id": "saturate_factor",
+  "simulating_method": "RandomPlacement",
+  "simulating_method_config": {
+    "repeat": 5,
+    "job_size": 100
+  },
+  "cluster_configs": {
+    "cluster_10": {
+      "GPUs": {
+        "RTX_2080Ti": 10
+      },
+      "enabled_scheduler_names": [
+        "MMKP_strict_0_1",
+        "MMKP_strict_0_125",
+        "MMKP_strict_0_15",
+        "MMKP_strict_0_175",
+        "MMKP_strict_0_2",
+        "MMKP_strict_25_1",
+        "MMKP_strict_25_125",
+        "MMKP_strict_25_15",
+        "MMKP_strict_25_175",
+        "MMKP_strict_25_2",
+        "MMKP_strict_50_1",
+        "MMKP_strict_50_125",
+        "MMKP_strict_50_15",
+        "MMKP_strict_50_175",
+        "MMKP_strict_50_2",
+        "MMKP_strict_75_1",
+        "MMKP_strict_75_125",
+        "MMKP_strict_75_15",
+        "MMKP_strict_75_175",
+        "MMKP_strict_75_2",
+        "MMKP_strict_1_1",
+        "MMKP_strict_1_125",
+        "MMKP_strict_1_15",
+        "MMKP_strict_1_175",
+        "MMKP_strict_1_2"
+      ],
+      "enable_plot": false
+    }
+  },
+  "enabled_cluster_configs": [
+    "cluster_10"
+  ],
+  "models": {
+    "ResNet50": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "ResNet18": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "YoloV5S": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "MobileNet": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "EfficientNet": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "InceptionV3": {
+      "batch_sizes": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    }
+  },
+  "data_source_configs": {
+    "data_source_ali": {
+      "data_range": [
+        100,
+        2000
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 500,
+      "comp_distribution": "ali",
+      "submit_at_beginning": true,
+      "enabled_scheduler_names": [
+        "MMKP_strict_0_1",
+        "MMKP_strict_0_125",
+        "MMKP_strict_0_15",
+        "MMKP_strict_0_175",
+        "MMKP_strict_0_2",
+        "MMKP_strict_25_1",
+        "MMKP_strict_25_125",
+        "MMKP_strict_25_15",
+        "MMKP_strict_25_175",
+        "MMKP_strict_25_2",
+        "MMKP_strict_50_1",
+        "MMKP_strict_50_125",
+        "MMKP_strict_50_15",
+        "MMKP_strict_50_175",
+        "MMKP_strict_50_2",
+        "MMKP_strict_75_1",
+        "MMKP_strict_75_125",
+        "MMKP_strict_75_15",
+        "MMKP_strict_75_175",
+        "MMKP_strict_75_2",
+        "MMKP_strict_1_1",
+        "MMKP_strict_1_125",
+        "MMKP_strict_1_15",
+        "MMKP_strict_1_175",
+        "MMKP_strict_1_2"
+      ],
+      "enable_plot": true
+    }
+  },
+  "enabled_data_source_configs": [
+    "data_source_ali"
+  ],
+  "default_scheduling_preemptive_interval": 600,
+  "schedulers": [
+    {
+      "name": "MMKP_strict_0_1",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.01,
+        "direct_saturate_factor": 1,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_0_125",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.01,
+        "direct_saturate_factor": 1.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_0_15",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.01,
+        "direct_saturate_factor": 2,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_0_175",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.01,
+        "direct_saturate_factor": 2.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_0_2",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.01,
+        "direct_saturate_factor": 3,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_25_1",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.25,
+        "direct_saturate_factor": 1,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_25_125",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.25,
+        "direct_saturate_factor": 1.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_25_15",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.25,
+        "direct_saturate_factor": 2,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_25_175",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.25,
+        "direct_saturate_factor": 2.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_25_2",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.25,
+        "direct_saturate_factor": 3,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_50_1",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_50_125",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_50_15",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 2,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_50_175",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 2.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_50_2",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 3,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_75_1",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.75,
+        "direct_saturate_factor": 1,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_75_125",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.75,
+        "direct_saturate_factor": 1.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_75_15",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.75,
+        "direct_saturate_factor": 2,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_75_175",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.75,
+        "direct_saturate_factor": 2.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_75_2",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.75,
+        "direct_saturate_factor": 3,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_1_1",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 1,
+        "direct_saturate_factor": 1,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_1_125",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 1,
+        "direct_saturate_factor": 1.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_1_15",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 1,
+        "direct_saturate_factor": 2,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_1_175",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 1,
+        "direct_saturate_factor": 2.5,
+        "timeout": 120
+      }
+    },
+    {
+      "name": "MMKP_strict_1_2",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 1,
+        "direct_saturate_factor": 3,
+        "timeout": 120
+      }
+    }
+  ],
+  "enabled_scheduler_names": [
+    "MMKP_strict_0_1",
+    "MMKP_strict_0_125",
+    "MMKP_strict_0_15",
+    "MMKP_strict_0_175",
+
+    "MMKP_strict_25_1",
+    "MMKP_strict_25_125",
+    "MMKP_strict_25_15",
+    "MMKP_strict_25_175",
+
+    "MMKP_strict_50_1",
+    "MMKP_strict_50_125",
+    "MMKP_strict_50_15",
+    "MMKP_strict_50_175",
+
+    "MMKP_strict_75_1",
+    "MMKP_strict_75_125",
+    "MMKP_strict_75_15",
+    "MMKP_strict_75_175",
+
+    "MMKP_strict_1_1",
+    "MMKP_strict_1_125",
+    "MMKP_strict_1_15",
+    "MMKP_strict_1_175",
+
+  ]
+}

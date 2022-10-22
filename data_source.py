@@ -485,10 +485,12 @@ class DataSource:
             "all_100": DataSource.plan_gpu_converter_comp_all_100,
             "ali": DataSource.plan_gpu_converter_ali_original,
             "ali_fix": DataSource.plan_gpu_converter_ali_fix,
+            "ali_uni": DataSource.plan_gpu_converter_ali_fix,
             "uniform": DataSource.plan_gpu_converter_uniform,
             "low": DataSource.plan_gpu_converter_low,
             "high": DataSource.plan_gpu_converter_high,
             "ali_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
+            "phi_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
             "phi": DataSource.plan_gpu_converter_phi
         }[comp_distribution](plan_GPU)
 

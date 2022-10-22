@@ -1,11 +1,11 @@
 {
   "license_path": null,
   "use_default_license": true,
-  "session_id": "random_placement",
+  "session_id": "selectors",
   "simulating_method": "RandomPlacement",
   "simulating_method_config": {
     "repeat": 100,
-    "job_size": 25
+    "job_size": 50
   },
   "cluster_configs": {
     "cluster_1": {
@@ -21,6 +21,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
         "MMKP_strict_rand_variants"
       ],
       "enable_plot": true
@@ -38,6 +40,8 @@
         "Tiresias",
         "BestFit",
         "MMKP_strict_no_split",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
         "MMKP_strict_rand_variants"
       ],
       "enable_plot": false
@@ -135,6 +139,8 @@
       "enabled_scheduler_names": [
         "MMKP_best_effort",
         "MMKP_strict",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
@@ -157,6 +163,8 @@
       "enabled_scheduler_names": [
         "MMKP_best_effort",
         "MMKP_strict",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
@@ -208,6 +216,8 @@
       "enabled_scheduler_names": [
         "MMKP_best_effort",
         "MMKP_strict",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
@@ -233,6 +243,8 @@
       "enabled_scheduler_names": [
         "MMKP_best_effort",
         "MMKP_strict",
+        "MMKP_strict_random_select",
+        "MMKP_strict_no_split_random_select",
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
@@ -260,7 +272,6 @@
         "MMKP_strict",
         "MMKP_strict_random_select",
         "MMKP_strict_no_split_random_select",
-        "MMKP_strict_rand_variants",
         "RoundRobin_strict",
         "RoundRobin_best_effort",
         "KubeShare",
@@ -268,13 +279,14 @@
         "BestFit",
         "MMKP_strict_no_split",
         "Gavel",
-        "Kubernetes"
+        "Kubernetes",
+        "MMKP_strict_rand_variants"
       ],
       "enable_plot": true
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_uni"
+    "data_source_ali_uni", "data_source_phi_fix_new"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -286,7 +298,8 @@
         "priority_type": "SRSF",
         "solver_enum": "MMKP",
         "profit_enum": "ComprehensiveUtilization",
-        "simulation_rand_seed": 3
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
       }
     },
     {
@@ -297,10 +310,9 @@
         "priority_type": "SRSF",
         "solver_enum": "MMKP",
         "profit_enum": "ComprehensiveUtilization",
-        "rand_variants": true,
-        "splitting_saturate_factor": 0.2,
-        "direct_saturate_factor": 1.5,
-        "simulation_rand_seed": 3
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1,
+        "rand_variants": true
       }
     },
     {
@@ -311,7 +323,37 @@
         "strict": true,
         "priority_type": "SRSF",
         "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization"
+        "profit_enum": "ComprehensiveUtilization",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
+      }
+    },
+    {
+      "name": "MMKP_strict_random_select",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_split": true,
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "selector": "random",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
+      }
+    },
+    {
+      "name": "MMKP_strict_no_split_random_select",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_split": false,
+        "strict": true,
+        "priority_type": "SRSF",
+        "solver_enum": "MMKP",
+        "profit_enum": "ComprehensiveUtilization",
+        "selector": "random",
+        "splitting_saturate_factor": 0.5,
+        "direct_saturate_factor": 1
       }
     },
     {
@@ -362,6 +404,9 @@
     }
   ],
   "enabled_scheduler_names": [
-    "MMKP_strict_rand_variants"
+    "MMKP_strict",
+    "MMKP_strict_random_select",
+    "MMKP_strict_no_split",
+    "MMKP_strict_no_split_random_select"
   ]
 }
