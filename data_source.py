@@ -15,6 +15,7 @@ from object import GPUType, JobSpec, ModelName, to_normalized_memory, CompCapaci
 
 StableWarmupStartRatio = 3
 
+NodeNames = ["dell01", "dell02", "dell03", "dell04", "dell05"]
 
 class TrainOrInference(Enum):
     train = "train"
@@ -30,6 +31,7 @@ class MonoJobExecInfo:
                  batch_size: int,
                  computation_proportion: int,
                  time_str: str,
+                 cross_node: bool,
                  raw_json: dict
                  ):
         self.model_name: ModelName = model_name
@@ -40,6 +42,7 @@ class MonoJobExecInfo:
         self.computation_proportion: int = computation_proportion
         self.time_str: str = time_str
         self.raw_json: dict = raw_json
+        self.cross_node: bool = cross_node
         self.__parse_raw_json()
 
     def __parse_raw_json(self):
@@ -98,6 +101,11 @@ class MonoJobExecInfoLoader:
                 pattern = rf"mono_{model_name.name}_{train_or_inference.name}_.*_batch_(\d+)_comp_(\d+)_([\d-]+).json"
                 groups = re.match(pattern, profiling_filename)
                 assert groups is not None
+                node_count = 0
+                for node_name in NodeNames:
+                    if node_name in profiling_filename:
+                        node_count += 1
+                cross_node = node_count > 1
                 batch_size = int(groups.group(1))
                 comp = int(groups.group(2))
                 time_str = groups.group(3)
@@ -112,6 +120,7 @@ class MonoJobExecInfoLoader:
                     batch_size=batch_size,
                     computation_proportion=comp,
                     time_str=time_str,
+                    cross_node=cross_node,
                     raw_json=raw_json
                 )
                 if exec_id in exec_infos:
@@ -136,7 +145,8 @@ class MonoJobExecInfoLoader:
                 GPU_type: Optional[GPUType] = None,
                 computation_proportion_predicate: Optional[Callable[[int], bool]] = None,
                 computation_proportion: Optional[int] = None,
-                worker_count: Optional[int] = None
+                worker_count: Optional[int] = None,
+                cross_node: Optional[bool] = None,
                 ):
         def predicate_item(item, predicate):
             return predicate(item) if item is not None else True
@@ -148,7 +158,8 @@ class MonoJobExecInfoLoader:
                            (predicate_item(computation_proportion_predicate,
                                            lambda cpp: cpp(info.computation_proportion))) and \
                            (predicate_item(computation_proportion, lambda cp: info.computation_proportion == cp)) and \
-                           (predicate_item(worker_count, lambda wc: info.worker_count == wc)),
+                           (predicate_item(worker_count, lambda wc: info.worker_count == wc)) and \
+                           (predicate_item(cross_node, lambda cn: info.cross_node == cross_node)),
                            infos))
 
     @staticmethod
@@ -191,7 +202,7 @@ class DataSource:
             run_time = DataSource.run_time_converter(run_time=run_time)
             plan_GPU = row["plan_gpu"]
             if plan_GPU > 100:
-                plan_GPU = 200
+                plan_GPU = 100
             worker_count = 1
             plan_GPU = int(DataSource.plan_gpu_converter(comp_distribution=comp_distribution, plan_GPU=plan_GPU))
             if plan_GPU > 100:
@@ -248,7 +259,9 @@ class DataSource:
     @staticmethod
     def iteration_time(model_name: ModelName,
                        batch_size: int,
-                       GPU_type: GPUType, worker_count: int,
+                       GPU_type: GPUType,
+                       worker_count: int,
+                       cross_node: bool,
                        comp_req: float):
         batch_size = batch_size // worker_count
         computation_proportion = int(comp_req * (100 // CompCapacity))

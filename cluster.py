@@ -8,28 +8,18 @@ from config import ClusterConfig, get_config
 from data_source import DataSource
 from object import GPU, GPUType, Job, Task, CompCapacity, ProfitEnum
 from profit import ProfitCalculator, get_profit_calculator
+from itertools import count
 
 
 class Cluster:
     def __init__(self, cluster_config: ClusterConfig):
-        self.GPUs: DefaultDict[GPUType, List[GPU]] = defaultdict(list)
-        self.GPU_IDs: List[str] = list()
-        self.GPU_ID_to_GPU: Dict[str, GPU] = dict()
-        self.GPU_ID_to_GPU_type: Dict[str, GPUType] = dict()
-        for GPU_type, count in cluster_config.GPUs.items():
-            for i in range(count):
-                g = GPU(GPU_type, i)
-                self.GPUs[GPU_type].append(g)
-                self.GPU_IDs.append(g.GPU_ID)
-                self.GPU_ID_to_GPU[g.GPU_ID] = g
-                self.GPU_ID_to_GPU_type[g.GPU_ID] = g.GPU_type
-        self.GPU_IDs.sort()
-        self.assignments: Assignments = Assignments()
+        self.cluster_config: ClusterConfig = cluster_config
+        self.assignments: Assignments = Assignments(cluster=self)
         self.jobs: Dict[str, Job] = dict()
         self.done_jobs: Dict[str, Job] = dict()
 
     def get_GPU_by_ID(self, GPU_ID: str) -> GPU:
-        return self.GPU_ID_to_GPU[GPU_ID]
+        return self.cluster_config.GPU_ID_to_GPU[GPU_ID]
 
     def get_undone_job(self, job_ID: str) -> Job:
         return self.jobs[job_ID]
@@ -62,7 +52,7 @@ class Cluster:
 
     def get_GPU_total_real_mem(self) -> int:
         total_real_mem = 0
-        for _, GPU_type in self.GPU_ID_to_GPU_type.items():
+        for _, GPU_type in self.cluster_config.GPU_ID_to_GPU_type.items():
             real_mem = GPUType.real_memory(GPU_type)
             total_real_mem += real_mem
         return total_real_mem
@@ -89,7 +79,8 @@ class TaskAssignment:
 
 
 class Assignments:
-    def __init__(self, GPU_type_to_task_assignments: Optional[Dict[GPUType, Dict[str, Set[TaskAssignment]]]] = None):
+    def __init__(self, cluster: Cluster, GPU_type_to_task_assignments: Optional[Dict[GPUType, Dict[str, Set[TaskAssignment]]]] = None):
+        self.cluster: Cluster = cluster
         if GPU_type_to_task_assignments is None:
             GPU_type_to_task_assignments = dict()
         self.GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = GPU_type_to_task_assignments
@@ -274,7 +265,7 @@ class Assignments:
         for job_ID, task_assignments in job_ID_to_task_assignments.items():
             GPU_type = job_ID_to_GPU_type[job_ID]
             GPU_type_to_task_assignments[GPU_type][job_ID] = task_assignments
-        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster=self.cluster, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     def get_job_over_supply(self) -> Tuple[Dict[str, int], int]:
         job_over_supply: Dict[str, int] = dict()
@@ -353,6 +344,9 @@ class Assignments:
         assert len(comp_req) == 1
         comp_req = next(iter(comp_req))
         GPU_type = {task_assignment.GPU_type for task_assignment in task_assignments}
+        GPU_ID_to_node_id = self.cluster.cluster_config.GPU_ID_to_node_id
+
+        cross_node = len({GPU_ID_to_node_id[task_assignment.GPU_ID] for task_assignment in task_assignments}) > 1
         assert len(GPU_type) == 1
         GPU_type = next(iter(GPU_type))
         worker_count = len(task_assignments)
@@ -362,7 +356,8 @@ class Assignments:
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             worker_count=worker_count,
-            comp_req=comp_req
+            cross_node=cross_node,
+            comp_req=comp_req,
         )
 
     def running_status(self, data_source: DataSource) -> Dict:
@@ -405,10 +400,10 @@ class Assignments:
                         memory=task_assignment.memory) for task_assignment in task_assignments}
         add(self.GPU_type_to_task_assignments)
         add(other.GPU_type_to_task_assignments)
-        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster=self.cluster, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     def clone(self) -> 'Assignments':
-        return self.merge(Assignments())
+        return self.merge(Assignments(self.cluster))
 
     def statistics(self, preemptive: bool, now: int, cluster: Cluster, data_source: DataSource) -> Dict:
         job_over_supply, total_over_supply = self.get_job_over_supply()

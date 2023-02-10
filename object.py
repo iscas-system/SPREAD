@@ -175,17 +175,29 @@ class Task:
 
 
 class GPU:
-    def __init__(self, GPU_type: GPUType, idx: int):
+    def __init__(self, GPU_type: GPUType, idx: int, node_id: str):
         self.GPU_type: GPUType = GPU_type
         self.idx: int = idx
-        self.GPU_ID = f"{self.GPU_type.name}_{self.idx}"
+        self.GPU_ID: str = f"{self.GPU_type.name}_{self.idx}"
+        self.node_id: str = node_id
 
     def __str__(self):
-        return self.GPU_ID
+        return f"GPU[ID={self.idx}, node_id={self.node_id}]"
 
-    def __repr__(self):
-        return self.GPU_ID
+class NodeType:
+    def __init__(self, node_type_name: str, GPUs: Dict[str, int]):
+        self.node_type_name: str = node_type_name
+        self.GPUs: Dict[str, int] = GPUs
+        self.GPU_types = set(GPUs.keys())
 
+class Node:
+    def __init__(self, node_type_name: str, idx: int):
+        self.node_type_name: str = node_type_name
+        self.idx: int = idx
+        self.node_id: str = f"{self.node_type_name}_{self.idx}"
+
+    def __str__(self):
+        return f"Node[node_id={self.node_id}]"
 
 class SchedulerEnum(Enum):
     MMKP = "MMKP"

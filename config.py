@@ -2,122 +2,13 @@ import json
 from log import info
 import os
 import sys
-from typing import Tuple, Dict, List, Optional, Set
-
-from object import ModelName, model_name_strs, SchedulerEnum, GPUType, SimulatingMethod
+from itertools import count
+from typing import Tuple, Dict, List, Optional, Set, DefaultDict
+from collections import defaultdict
+from object import ModelName, model_name_strs, SchedulerEnum, GPUType, SimulatingMethod, NodeType, Node, GPU
 
 
 class Config:
-    """
-        {
-            "license_path": null,
-            "cluster_configs": {
-                "cluster_1": {
-                    "GPUs": {
-                        "RTX_2080Ti": 4,
-                        "Tesla_T4": 3
-                    }
-                },
-                "cluster_2": {
-                    "GPUs": {
-                        "RTX_2080Ti": 4,
-                        "Tesla_T4": 3
-                    },
-                    "enabled_scheduler_names": ["MMKP", "RoundRobin", "BinPacking", "Tiresias", "Themis", "Optimus"]
-                }
-            },
-            "enabled_cluster_configs": ["cluster_1", "cluster_2"],
-            "models": {
-                "BertBase": {
-                    "batch_sizes": [8, 16, 32, 64, 128],
-                    "preemptive_overhead": [10, 15]
-                },
-                "LSTM": {
-                    "batch_sizes": [10, 20, 40, 80],
-                    "preemptive_overhead": [5, 10]
-                },
-                "ResNet50": {
-                    "batch_sizes": [8, 16, 32, 64],
-                    "preemptive_overhead": [20, 30]
-                },
-                "ResNet18": {
-                    "batch_sizes": [8, 16, 32, 64],
-                    "preemptive_overhead": [10, 15]
-                },
-                "YoloV5S": {
-                    "batch_sizes": [8, 16, 32, 64, 128],
-                    "preemptive_overhead": [20, 25]
-                },
-                "MobileNet": {
-                    "batch_sizes": [8, 16, 32, 64, 128],
-                    "preemptive_overhead": [5, 15]
-                }
-            },
-            "data_source_configs": {
-                "data_source_1": {
-                    "data_range": [100, 500],
-                    "job_count": 300,
-                    "submit_at_beginning": false,
-                    "enabled_scheduler_names": ["MMKP", "RoundRobin", "BinPacking"]
-                },
-                "data_source_2": {
-                    "data_range": [100, 500],
-                    "job_count": 300,
-                    "submit_at_beginning": false,
-                    "enabled_scheduler_names": ["MMKP", "Tiresias", "Themis", "Optimus"]
-                }
-            },
-            "enabled_data_source_configs": ["data_source_1", "data_source_2"],
-            "default_scheduling_interval": 360，
-            "schedulers": [
-                {
-                    "name": "MMKP_SRSF",
-                    "scheduler_enum": "MMKP",
-                    "config": {
-                        "priority_type": "SRSF"
-                    }
-                },
-                {
-                    "name": "MMKP_FCFS",
-                    "scheduler_enum": "MMKP",
-                    "config": {
-                        "priority_type": "FCFS"
-                    }
-                },
-                {
-                    "name": "RoundRobin_SRSF",
-                    "scheduler_enum": "RoundRobin",
-                    "config": {
-                        "priority_type": "SRSF"
-                    }
-                },
-                {
-                    "name": "RoundRobin_FCFS",
-                    "scheduler_enum": "RoundRobin",
-                    "config": {
-                        "priority_type": "FCFS"
-                    }
-                },
-                {
-                    "name": "BinPacking_1",
-                    "scheduler_enum": "BinPacking",
-                    "config": {}
-                },
-                {
-                    "name": "Optimus_1",
-                    "scheduler_enum": "Optimus",
-                    "config": {}
-                },
-                {
-                    "name": "Tiresias_1",
-                    "scheduler_enum": "Tiresias",
-                    "config": {}
-                }
-            ],
-            "enabled_scheduler_names": ["RoundRobin_FCFS"]
-        }
-    """
-
     def __init__(self, config_path: str):
         with open(config_path) as c:
             d = json.load(c)
@@ -138,9 +29,8 @@ class Config:
                 init_job_data_seed=c["init_job_data_seed"],
                 job_count=c["job_count"],
                 submit_at_beginning=c["submit_at_beginning"],
+                submit_scale_factor=c["submit_scale_factor"],
                 filter_replicas=c.get("filter_replicas", [1]),
-                enabled_scheduler_names=c.get("enabled_scheduler_names", self.enabled_scheduler_names),
-                enable_plot=c.get("enable_plot", False),
                 comp_distribution=c.get("comp_distribution", "ali")
             )
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
@@ -157,9 +47,8 @@ class Config:
         for cn, c in d["cluster_configs"].items():
             self.cluster_configs[cn] = ClusterConfig(
                 name=cn,
-                GPUs={GPUType[GPU_type_str]: count for GPU_type_str, count in c["GPUs"].items()},
-                enabled_scheduler_names=c.get("enabled_scheduler_names", self.enabled_scheduler_names),
-                enable_plot=c.get("enable_plot", False)
+                node_types=[NodeType(node_type_name=node_type_name, GPUs=GPUs) for node_type_name, GPUs in c["node_type"].items()],
+                node_type_to_count={node_type_name: node_count for node_type_name, node_count in c["nodes"].items()}
             )
         self.enabled_cluster_configs: List[str] = d["enabled_cluster_configs"]
         self.default_scheduling_preemptive_interval: int = d["default_scheduling_preemptive_interval"]
@@ -170,7 +59,6 @@ class Config:
                 scheduler_enum=SchedulerEnum[sc["scheduler_enum"]],
                 config=sc["config"]
             )
-        self.enabled_scheduler_names: List[str] = d["enabled_scheduler_names"]
 
     def __init_license(self):
         if self.using_default_license:
@@ -219,12 +107,35 @@ def get_config(config_path: Optional[str] = None):
 
 
 class ClusterConfig:
-    def __init__(self, name: str, GPUs: Dict[GPUType, int], enabled_scheduler_names: List[str], enable_plot: bool):
+    def __init__(self, name: str, node_types: List[NodeType], node_type_to_count: Dict[str, int]):
         self.name: str = name
-        self.GPUs: Dict[GPUType, int] = GPUs
-        self.GPU_types: Set[GPUType] = set(GPUs.keys())
-        self.enabled_scheduler_names: List[str] = enabled_scheduler_names
-        self.enable_plot: bool = enable_plot
+        self.node_types: Dict[str, NodeType] = {node_type.node_type_name: node_type for node_type in node_types}
+        nodes = []
+        counter = count(0)
+        for node_type_name, c in node_type_to_count.items():
+            nodes.extend([Node(node_type_name, next(counter)) for _ in range(c)])
+        self.nodes: List[Node] = nodes
+        self.GPU_types: Set[GPUType] = set().union(*{nt.GPU_types for nt in node_types})
+
+        self.GPUs: DefaultDict[GPUType, List[GPU]] = defaultdict(list)
+        self.GPU_IDs: List[str] = list()
+        self.GPU_ID_to_GPU: Dict[str, GPU] = dict()
+        self.GPU_ID_to_GPU_type: Dict[str, GPUType] = dict()
+        self.GPU_ID_to_node_id: Dict[str, str] = dict()
+        self.node_id_to_GPU_ID: Dict[str, str] = dict()
+        GPU_idx_counter = count(0)
+        for node in self.nodes:
+            node_type = self.node_types[node.node_type_name]
+            for GPU_type, c in node_type.GPUs.items():
+                GPU_type = GPUType(GPU_type)
+                g = GPU(GPU_type=GPU_type, idx=next(GPU_idx_counter), node_id=node.node_id)
+                self.GPUs[GPU_type].append(g)
+                self.GPU_IDs.append(g.GPU_ID)
+                self.GPU_ID_to_GPU[g.GPU_ID] = g
+                self.GPU_ID_to_GPU_type[g.GPU_ID] = g.GPU_type
+                self.GPU_ID_to_node_id[g.GPU_ID] = node.node_id
+                self.node_id_to_GPU_ID[g.node_id] = g.GPU_ID
+        self.GPU_IDs.sort()
 
 
 class DataSourceConfig:
@@ -235,9 +146,8 @@ class DataSourceConfig:
                  init_job_data_seed: int,
                  job_count: int,
                  submit_at_beginning: bool,
+                 submit_scale_factor: Optional[float],
                  filter_replicas: List[int],
-                 enabled_scheduler_names: List[str],
-                 enable_plot: bool,
                  comp_distribution: str,
                  ):
         self.name: str = name
@@ -246,7 +156,6 @@ class DataSourceConfig:
         self.init_job_data_seed: int = init_job_data_seed
         self.job_count: int = job_count
         self.submit_at_beginning: bool = submit_at_beginning
+        self.submit_scale_factor: float = submit_scale_factor
         self.filter_replicas: List = filter_replicas
-        self.enabled_scheduler_names: List[str] = enabled_scheduler_names
-        self.enable_plot: bool = enable_plot
         self.comp_distribution: str = comp_distribution

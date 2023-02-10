@@ -9,7 +9,7 @@ from object import GPUType, CompCapacity, Task, Job
 from profit import get_profit_calculator
 from scheduler import Scheduler
 from .RR import RRScheduler
-from .solver import SolverParameters, SolverParameters3, do_solve_1, do_solve_3
+from .solver import SolverParameters, SolverParameters3, do_MMKP_solve_1, do_MMKP_solve_3
 
 
 class MMKPScheduler(Scheduler):
@@ -274,7 +274,7 @@ class MMKPScheduler(Scheduler):
             assignment_plans=assignment_plans_,
             job_ID_to_profit=partial_job_ID_to_profit_,
             GPU_comp_mem_capacity=GPU_comp_mem_capacity)
-        return do_solve_1(solver_params=solver_parameters_)
+        return do_MMKP_solve_1(solver_params=solver_parameters_)
 
     def solve_assignment_plans_3(self,
                                  direct_assignment_plans: List['MMKPScheduler.AssignmentPlan'],
@@ -341,7 +341,7 @@ class MMKPScheduler(Scheduler):
             GPU_comp_mem_capacity=GPU_comp_mem_capacity,
             task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits
         )
-        solver_result = do_solve_3(solver_params=solver_parameters)
+        solver_result = do_MMKP_solve_3(solver_params=solver_parameters)
         if solver_result is None:
             info("MMKP do solve 3 result is None, timeout.")
             return None, None

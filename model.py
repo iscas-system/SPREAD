@@ -54,6 +54,46 @@ class SolverResult(BaseModel):
     assignment: Dict[str, Set[str]]
 
 
+class PartitionSolverParameters(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    timeout: int
+    GPU_ID_to_node_id: Dict[str, str]
+    partition_size: int
+    strategy: str
+
+
+class PartitionSolverResult(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    solver_parameters: Optional[PartitionSolverParameters]
+    duration: int
+    GPU_ID_to_partition: Dict[str, str]
+    partition_to_GPU_IDs: Dict[str, List[str]]
+    partition_profit: int
+
+
+class JobDistributionSolverParameters(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    partition_to_GPU_IDs: Dict[str, List[str]]
+    GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
+    GPU_comp_mem_total_capacity: Tuple[int, int]
+    job_comp_mem_demand: Dict[str, Tuple[int, int]]
+    job_priority: List[str]
+    strategy: str
+
+
+class JobDistributionSolverResult(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    solver_parameters: Optional[JobDistributionSolverParameters]
+    partition_to_jobs: Dict[str, List[str]]
+
 class SnapshotRecordParameters(BaseModel):
     class Config:
         use_enum_values = True

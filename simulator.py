@@ -28,15 +28,11 @@ class Simulator:
         self.data_source: DataSource = DataSource(data_source_config=data_source_config,
                                                   enabled_GPU_types=cluster_config.GPU_types)
         self.cluster_config: ClusterConfig = cluster_config
-        enabled_schedulers = set(self.data_source_config.enabled_scheduler_names).intersection(
-            set(self.cluster_config.enabled_scheduler_names))
         self.schedulers: List[Scheduler] = list()
         for scheduler_name in c.enabled_scheduler_names:
             scheduler_desc = c.schedulers[scheduler_name]
             scheduler_enum = scheduler_desc.scheduler_enum
             scheduler_config = scheduler_desc.config
-            if scheduler_desc.name not in enabled_schedulers:
-                continue
             scheduler = init_scheduler(
                 name=scheduler_desc.name,
                 scheduler_enum=scheduler_enum,
@@ -124,8 +120,8 @@ class Simulator:
 
             info(f"Simulator scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
             snapshot_record_parameters = scheduler.build_snapshot_record_parameters()
-            enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
-            snapshot_record_parameters.do_plot = enable_plot
+            # enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
+            snapshot_record_parameters.do_plot = False
 
             do_snapshot_record_plot(session_id=session_id, is_preemptive_interval=is_preemptive_interval, snapshot_record_parameters=snapshot_record_parameters)
             running_status = scheduler.cluster.assignments.running_status(data_source=self.data_source)
