@@ -42,6 +42,22 @@ class SolverParameters3(BaseModel):
     GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
     task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
 
+
+class SolverParameters4(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    solver_type: SolverEnum
+    timeout: int
+    splitting_job_ID_task_sets: Dict[str, List[List[str]]]
+    GPU_type: GPUType
+    dist_tasks: List[Tuple[str, ...]]
+    GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
+    task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
+    GPU_ID_to_node_id: Dict[str, str]
+    in_node_job_IDs: List[str]
+    cross_node_job_IDs: List[str]
+
 class SolverResult(BaseModel):
     class Config:
         use_enum_values = True
@@ -49,6 +65,7 @@ class SolverResult(BaseModel):
     solver_parameters: Optional[SolverParameters]
     solver_parameters2: Optional[SolverParameters2]
     solver_parameters3: Optional[SolverParameters3]
+    solver_parameters4: Optional[SolverParameters4]
     duration: int
     profit: int
     assignment: Dict[str, Set[str]]
