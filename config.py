@@ -31,7 +31,8 @@ class Config:
                 submit_at_beginning=c["submit_at_beginning"],
                 submit_scale_factor=c["submit_scale_factor"],
                 filter_replicas=c.get("filter_replicas", [1]),
-                comp_distribution=c.get("comp_distribution", "ali")
+                comp_distribution=c.get("comp_distribution", "ali"),
+                mono_job_data_path=c["mono_job_data_path"]
             )
         self.enabled_data_source_configs: List[str] = d["enabled_data_source_configs"]
         self.model_configs: Dict[ModelName, ModelConfig] = dict()
@@ -115,7 +116,9 @@ class ClusterConfig:
         for node_type_name, c in node_type_to_count.items():
             nodes.extend([Node(node_type_name, next(counter)) for _ in range(c)])
         self.nodes: List[Node] = nodes
-        self.GPU_types: Set[GPUType] = set().union(*{nt.GPU_types for nt in node_types})
+        self.GPU_types: Set[GPUType] = set()
+        for nt in node_types:
+            self.GPU_types.update(nt.GPU_types)
 
         self.GPUs: DefaultDict[GPUType, List[GPU]] = defaultdict(list)
         self.GPU_IDs: List[str] = list()
@@ -149,6 +152,7 @@ class DataSourceConfig:
                  submit_scale_factor: Optional[float],
                  filter_replicas: List[int],
                  comp_distribution: str,
+                 mono_job_data_path: str
                  ):
         self.name: str = name
         self.submit_table_path: str = submit_table_path
@@ -159,3 +163,4 @@ class DataSourceConfig:
         self.submit_scale_factor: float = submit_scale_factor
         self.filter_replicas: List = filter_replicas
         self.comp_distribution: str = comp_distribution
+        self.mono_job_data_path: str = mono_job_data_path

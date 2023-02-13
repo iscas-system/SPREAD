@@ -20,28 +20,83 @@
         }
       },
       "nodes": {
-        "8GPU_node": 3,
-        "4GPU_node": 4,
-        "2GPU_node": 4
+        "8GPU_node": 4,
+        "4GPU_node": 6,
+        "2GPU_node": 6
       }
     }
   },
   "enabled_cluster_configs": [
-    "cluster_48"
+    "cluster_64"
   ],
   "models": {
-    "ResNet50": {
+    "SqueezeNet": {
       "batch_sizes": [
         16,
         32,
-        64
+        64,
+        128,
+        256
       ],
       "preemptive_overhead": [
         0,
         0
       ]
     },
-    "ResNet18": {
+    "ShuffleNet": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128,
+        256
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "GhostNet": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128,
+        256
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "HarDNet": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128,
+        256
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "MEALV2": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "EfficientNet": {
       "batch_sizes": [
         16,
         32,
@@ -64,34 +119,12 @@
         0
       ]
     },
-    "MobileNet": {
+    "MobileNetV2": {
       "batch_sizes": [
         16,
         32,
         64,
         128
-      ],
-      "preemptive_overhead": [
-        0,
-        0
-      ]
-    },
-    "EfficientNet": {
-      "batch_sizes": [
-        16,
-        32,
-        64
-      ],
-      "preemptive_overhead": [
-        0,
-        0
-      ]
-    },
-    "InceptionV3": {
-      "batch_sizes": [
-        16,
-        32,
-        64
       ],
       "preemptive_overhead": [
         0,
@@ -109,7 +142,9 @@
       "job_count": 500,
       "comp_distribution": "ali",
       "submit_at_beginning": true,
-      "submit_scale_factor": 1
+      "submit_table_path": "data/pai_job_submit_table.csv",
+      "submit_scale_factor": 1,
+      "mono_job_data_path": "data/mono_data_SC"
     },
     "data_source_ali_fix_new": {
       "data_range": [
@@ -120,7 +155,9 @@
       "job_count": 500,
       "comp_distribution": "ali_fix_new",
       "submit_at_beginning": true,
-      "submit_scale_factor": 1
+      "submit_table_path": "data/pai_job_submit_table.csv",
+      "submit_scale_factor": 1,
+      "mono_job_data_path": "data/mono_data_SC"
     },
     "data_source_ali_uni": {
       "data_range": [
@@ -131,7 +168,9 @@
       "job_count": 500,
       "comp_distribution": "uniform",
       "submit_at_beginning": true,
-      "submit_scale_factor": 1
+      "submit_table_path": "data/pai_job_submit_table.csv",
+      "submit_scale_factor": 1,
+      "mono_job_data_path": "data/mono_data_SC"
     },
     "data_source_phi": {
       "data_range": [
@@ -142,8 +181,9 @@
       "job_count": 500,
       "comp_distribution": "phi",
       "submit_at_beginning": true,
+      "submit_table_path": "data/philly_job_submit_table.csv",
       "submit_scale_factor": 1,
-      "submit_table_path": "./data/philly_job_submit_table.csv"
+      "mono_job_data_path": "data/mono_data_SC"
     },
     "data_source_phi_fix_new": {
       "data_range": [
@@ -154,12 +194,27 @@
       "job_count": 500,
       "comp_distribution": "ali_fix_new",
       "submit_at_beginning": true,
+      "submit_table_path": "data/philly_job_submit_table.csv",
       "submit_scale_factor": 1,
-      "submit_table_path": "./data/philly_job_submit_table.csv"
+      "mono_job_data_path": "data/mono_data_SC"
+    },
+    "data_source_phi_uni": {
+      "data_range": [
+        0,
+        2000
+      ],
+      "init_job_data_seed": 2,
+      "job_count": 500,
+      "comp_distribution": "uniform",
+      "submit_at_beginning": true,
+      "submit_table_path": "data/philly_job_submit_table.csv",
+      "submit_scale_factor": 1,
+      "mono_job_data_path": "data/mono_data_SC"
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_uni", "data_source_phi_fix_new"
+    "data_source_ali_uni",
+    "data_source_phi_fix_new"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [

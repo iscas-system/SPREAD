@@ -89,6 +89,13 @@ class ModelName(Enum):
     InceptionV3 = "InceptionV3"
     YoloV5S = "YoloV5S"
     EfficientNet = "EfficientNet"
+    MobileNetV2 = "MobileNetV2"
+    SqueezeNet = "SqueezeNet"
+    ShuffleNet = "ShuffleNet"
+    HarDNet = "HarDNet"
+    GhostNet = "GhostNet"
+    MEALV2 = "MEALV2"
+
 
 
 model_name_strs = [model_name.name for model_name in ModelName]

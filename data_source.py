@@ -98,7 +98,7 @@ class MonoJobExecInfoLoader:
             for profiling_filename in os.listdir(session_dir):
                 if not profiling_filename.endswith("json"):
                     continue
-                pattern = rf"mono_{model_name.name}_{train_or_inference.name}_.*_batch_(\d+)_comp_(\d+)_([\d-]+).json"
+                pattern = rf"mono_{model_name.name}_{train_or_inference.name}_.*_batch_(\d+)_comp_(\d+)_rank_(\d+)_([\d-]+).json"
                 groups = re.match(pattern, profiling_filename)
                 assert groups is not None
                 node_count = 0
@@ -171,20 +171,33 @@ class MonoJobExecInfoLoader:
         return sorted(infos, key=lambda info: info.computation_proportion)
 
 
-mono_job_data = MonoJobExecInfoLoader.load_infos(str(pathlib.Path(__file__).parent / "data" / "mono_data"))
-
-
 class DataSource:
+
+    mono_job_datas = dict()
+
     def __init__(self,
                  data_source_config: DataSourceConfig,
-                 enabled_GPU_types: Set[GPUType],
+                 enabled_GPU_types=None,
                  ):
+        if enabled_GPU_types is None:
+            enabled_GPU_types = set(GPUType)
         self.data_source_config: DataSourceConfig = data_source_config
         self.enabled_GPU_types: List[GPUType] = list(enabled_GPU_types)
+        self.__init_mono_job_data()
         self.__init_job_data()
 
+    def __init_mono_job_data(self):
+        if self.data_source_config.mono_job_data_path in self.mono_job_datas:
+            self.mono_job_data = self.mono_job_datas[self.data_source_config.mono_job_data_path]
+            return
+        p = str(pathlib.Path(__file__).parent / self.data_source_config.mono_job_data_path)
+        mono_job_data = MonoJobExecInfoLoader.load_infos(p)
+        self.mono_job_datas[self.data_source_config.mono_job_data_path] = mono_job_data
+        self.mono_job_data = self.mono_job_datas[self.data_source_config.mono_job_data_path]
+
     def __init_job_data(self):
-        df = pd.read_csv(self.data_source_config.submit_table_path)
+        job_data_path = str(pathlib.Path(__file__).parent / self.data_source_config.submit_table_path)
+        df = pd.read_csv(job_data_path)
         df = df[self.data_source_config.data_range[0]: self.data_source_config.data_range[1]]
         df["submit_time"] -= df.iloc[0]['submit_time'].item()
         self.job_specs: List[JobSpec] = list()
@@ -224,8 +237,12 @@ class DataSource:
                 elif batch_size > lower_threshold:
                     batch_sizes_fixed += [batch_size for _ in range(2)]
             batch_size = np.random.choice(batch_sizes_fixed)
-            iteration_throughput = DataSource.iteration_time(model_name, batch_size, GPU_type, worker_count,
-                                                             comp_req)
+            iteration_throughput = self.iteration_time(model_name,
+                                                       batch_size,
+                                                       GPU_type,
+                                                       worker_count,
+                                                       False,
+                                                       comp_req)
             total_iterations = int(1e9 * run_time) // iteration_throughput
             job_spec = JobSpec(job_ID=job_ID,
                                model_name=model_name,
@@ -246,18 +263,16 @@ class DataSource:
     def get_job_spec(self, job_ID: str) -> JobSpec:
         return self.job_specs_dict[job_ID]
 
-    @staticmethod
-    def get_exec_info(model_name: ModelName, batch_size: int, GPU_type: GPUType, worker_count: int,
+    def get_exec_info(self, model_name: ModelName, batch_size: int, GPU_type: GPUType, worker_count: int,
                       computation_proportion: int):
         batch_size = batch_size // worker_count
-        info = MonoJobExecInfoLoader.extract(mono_job_data[model_name],
+        info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
                                              GPU_type=GPU_type, batch_size=batch_size,
                                              computation_proportion=computation_proportion, worker_count=worker_count)
         assert len(info) == 1
         return info[0]
 
-    @staticmethod
-    def iteration_time(model_name: ModelName,
+    def iteration_time(self, model_name: ModelName,
                        batch_size: int,
                        GPU_type: GPUType,
                        worker_count: int,
@@ -265,22 +280,29 @@ class DataSource:
                        comp_req: float):
         batch_size = batch_size // worker_count
         computation_proportion = int(comp_req * (100 // CompCapacity))
-        info = MonoJobExecInfoLoader.extract(mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
-                                             computation_proportion=computation_proportion, worker_count=worker_count)
+        info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
+                                             GPU_type=GPU_type,
+                                             batch_size=batch_size,
+                                             computation_proportion=computation_proportion,
+                                             cross_node=cross_node,
+                                             worker_count=worker_count)
         if len(info) == 1:
             return info[0].avg_stabled_iteration_interval
-        infos = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
+        infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
+                                              batch_size=batch_size,
+                                              GPU_type=GPU_type,
+                                              cross_node=cross_node,
                                               worker_count=worker_count)
         if len(infos) == 0:
             return None
         factor = 1.0
         if len(infos) == 0:
-            info_base = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size,
+            info_base = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
                                                       GPU_type=GPUType.RTX_2080Ti, worker_count=1)
-            info_self = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size,
+            info_self = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
                                                       GPU_type=GPU_type, worker_count=1)
             assert len(info_base) == 1 and len(info_self) == 1
-            infos = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
+            infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
                                                   worker_count=worker_count)
             factor = info_self[0].avg_stabled_iteration_interval / info_base[0].avg_stabled_iteration_interval
         infos = MonoJobExecInfoLoader.sort_by_computation(infos)
@@ -303,18 +325,17 @@ class DataSource:
             less_idx].avg_stabled_iteration_interval + k * (computation_proportion - less_comp)
         return iteration_interval * factor
 
-    @staticmethod
-    def computation_utilization(model_name: ModelName,
+    def computation_utilization(self, model_name: ModelName,
                        batch_size: int,
                        GPU_type: GPUType, worker_count: int,
                        comp_req: float) -> float:
         batch_size = batch_size // worker_count
         computation_proportion = int(comp_req * (100 // CompCapacity))
-        info = MonoJobExecInfoLoader.extract(mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
+        info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
                                              computation_proportion=computation_proportion, worker_count=worker_count)
         if len(info) == 1:
             return info[0].avg_stabled_utilization
-        infos = MonoJobExecInfoLoader.extract(mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
+        infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
                                               worker_count=worker_count)
         infos = MonoJobExecInfoLoader.sort_by_computation(infos)
         greater_idx = 0
@@ -353,19 +374,25 @@ class DataSource:
                         GPU_type: GPUType,
                         comp_req: float,
                         worker_count: int,
+                        cross_node: bool,
                         remaining_iterations: float) -> int:
-        iteration_time = self.job_iteration_time(job_ID, GPU_type, comp_req, worker_count)
+        iteration_time = self.job_iteration_time(job_ID, GPU_type, comp_req, worker_count, cross_node)
         remain_duration = int(remaining_iterations * iteration_time)
         return remain_duration
 
-    def job_iteration_time(self, job_ID: str, GPU_type: GPUType, comp_req: float,
-                           worker_count: int) -> float:
+    def job_iteration_time(self,
+                           job_ID: str,
+                           GPU_type: GPUType,
+                           comp_req: float,
+                           worker_count: int,
+                           cross_node: bool) -> float:
         job_spec = self.job_specs_dict[job_ID]
         iteration_time = self.iteration_time(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             worker_count=worker_count,
+            cross_node=cross_node,
             comp_req=comp_req
         )
         return iteration_time
@@ -509,15 +536,14 @@ class DataSource:
 
 
 def do_test():
-    infos = MonoJobExecInfoLoader.extract(mono_job_data[ModelName.BertBase], train_or_inference=TrainOrInference.train,
-                                          batch_size=4)
-    MonoJobExecInfoLoader.extract(infos, worker_count=2)
-    print(infos)
-    c = get_config("./configs/test_config.json")
-    d = DataSource(data_source_config=c.data_source_configs["data_source_ali_fix"], enabled_GPU_types={GPUType.RTX_2080Ti})
+    c = get_config("./configs/MMKP_config.json")
+    d = DataSource(data_source_config=c.data_source_configs["data_source_ali_fix_new"], enabled_GPU_types={GPUType.RTX_2080Ti})
     print(d.job_specs[0].total_iterations)
-    e = DataSource(data_source_config=c.data_source_configs["data_source_ali_fix"], enabled_GPU_types={GPUType.RTX_2080Ti})
+    e = DataSource(data_source_config=c.data_source_configs["data_source_phi_uni"], enabled_GPU_types={GPUType.RTX_2080Ti})
     print(e.job_specs[0].total_iterations)
+    infos = MonoJobExecInfoLoader.extract(e.mono_job_data[ModelName.MEALV2], train_or_inference=TrainOrInference.train,
+                                          batch_size=128, worker_count=4, cross_node=True)
+    print(infos)
 
 
 if __name__ == '__main__':

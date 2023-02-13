@@ -1,0 +1,146 @@
+{
+	"scheduler_name": "MMKP_strict",
+	"scheduler_type": "MMKP",
+	"solver_type": "MMKP",
+	"GPU_type_to_GPU_IDs": {
+		"RTX_2080Ti": [
+			"RTX_2080Ti_9",
+			"RTX_2080Ti_5",
+			"RTX_2080Ti_2",
+			"RTX_2080Ti_7",
+			"RTX_2080Ti_4",
+			"RTX_2080Ti_0",
+			"RTX_2080Ti_3",
+			"RTX_2080Ti_6",
+			"RTX_2080Ti_8",
+			"RTX_2080Ti_1"
+		]
+	},
+	"dist_job_to_tasks": {
+		"job_ID_465": [
+			"job_ID_465|task_0",
+			"job_ID_465|task_1"
+		]
+	},
+	"task_comp_mem_requirements": {
+		"job_ID_281|task_0": [
+			6,
+			12
+		],
+		"job_ID_398|task_0": [
+			3,
+			8
+		],
+		"job_ID_282|task_0": [
+			10,
+			20
+		],
+		"job_ID_409|task_0": [
+			19,
+			7
+		],
+		"job_ID_110|task_0": [
+			19,
+			12
+		],
+		"job_ID_423|task_0": [
+			20,
+			6
+		],
+		"job_ID_256|task_0": [
+			19,
+			7
+		],
+		"job_ID_140|task_0": [
+			7,
+			20
+		],
+		"job_ID_243|task_0": [
+			20,
+			5
+		],
+		"job_ID_496|task_0": [
+			7,
+			20
+		],
+		"job_ID_465|task_0": [
+			1,
+			13
+		],
+		"job_ID_465|task_1": [
+			1,
+			13
+		],
+		"job_ID_356|task_0": [
+			5,
+			22
+		]
+	},
+	"task_comp_over_supply": {
+		"job_ID_281|task_0": 0,
+		"job_ID_398|task_0": 0,
+		"job_ID_282|task_0": 0,
+		"job_ID_409|task_0": 0,
+		"job_ID_110|task_0": 0,
+		"job_ID_423|task_0": 0,
+		"job_ID_256|task_0": 0,
+		"job_ID_140|task_0": 0,
+		"job_ID_243|task_0": 0,
+		"job_ID_496|task_0": 0,
+		"job_ID_465|task_0": 0,
+		"job_ID_465|task_1": 0,
+		"job_ID_356|task_0": 0
+	},
+	"task_comp_lack_supply": {
+		"job_ID_281|task_0": 0,
+		"job_ID_398|task_0": 0,
+		"job_ID_282|task_0": 0,
+		"job_ID_409|task_0": 0,
+		"job_ID_110|task_0": 0,
+		"job_ID_423|task_0": 0,
+		"job_ID_256|task_0": 0,
+		"job_ID_140|task_0": 0,
+		"job_ID_243|task_0": 0,
+		"job_ID_496|task_0": 0,
+		"job_ID_465|task_0": 0,
+		"job_ID_465|task_1": 0,
+		"job_ID_356|task_0": 0
+	},
+	"assignments": {
+		"RTX_2080Ti_0": [
+			"job_ID_281|task_0",
+			"job_ID_398|task_0"
+		],
+		"RTX_2080Ti_1": [
+			"job_ID_282|task_0"
+		],
+		"RTX_2080Ti_2": [
+			"job_ID_409|task_0",
+			"job_ID_465|task_0"
+		],
+		"RTX_2080Ti_3": [
+			"job_ID_110|task_0"
+		],
+		"RTX_2080Ti_4": [
+			"job_ID_423|task_0"
+		],
+		"RTX_2080Ti_5": [
+			"job_ID_465|task_1",
+			"job_ID_256|task_0"
+		],
+		"RTX_2080Ti_6": [
+			"job_ID_140|task_0"
+		],
+		"RTX_2080Ti_8": [
+			"job_ID_243|task_0"
+		],
+		"RTX_2080Ti_9": [
+			"job_ID_496|task_0"
+		],
+		"RTX_2080Ti_7": [
+			"job_ID_356|task_0"
+		]
+	},
+	"profit": 14.16818181818182,
+	"do_plot": false
+}
