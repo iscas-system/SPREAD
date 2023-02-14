@@ -2,6 +2,7 @@ from os import path
 from basic import *
 from cycler import cycler
 from scipy import stats
+from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
 line_cycler   = (cycler(color=["#E69F00", "#56B4E9", "#009E73", "#0072B2", "#D55E00", "#CC79A7", "#F0E442"]) +
                  cycler(linestyle=["-", "--", "-.", ":", "-", "--", "-."]))

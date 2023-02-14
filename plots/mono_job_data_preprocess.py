@@ -66,6 +66,8 @@ def batch_size_color(batch_size: int) -> str:
         80: colors[2],
         128: colors[3],
         160: colors[3],
+        256: colors[4],
+        512: colors[5],
     }[batch_size]
 
 
@@ -91,83 +93,91 @@ def batch_size_level_color(batch_size_level: int) -> str:
     return colors[batch_size_level]
 
 
-class JobExecInfo:
-    def __init__(self,
-                 model_name: ModelName,
-                 gpu_type: GPUType,
-                 worker_count: int,
-                 cross_node: bool,
-                 train_or_inference: TrainOrInference,
-                 batch_size: int,
-                 total_batch_size: int,
-                 cpu_batch_size: int,
-                 acc_batch_size: int,
-                 computation_proportion: int,
-                 cpu_limit: Optional[int],
-                 time_str: str,
-                 raw_json: dict,
-                 cpu_worker_count: Optional[int] = None,
-                 gpu_worker_count: Optional[int] = None,
-                 ):
-        self.model_name: ModelName = model_name
-        self.gpu_type: GPUType = gpu_type
-        self.worker_count: int = worker_count
-        self.cross_node: bool = cross_node
-        self.train_or_inference: TrainOrInference = train_or_inference
-        self.batch_size: int = batch_size
-        self.total_batch_size: int = total_batch_size
-        self.cpu_batch_size: int = cpu_batch_size
-        self.acc_batch_size: int = acc_batch_size
-        self.computation_proportion: int = computation_proportion
-        self.cpu_limit: Optional[int] = cpu_limit
-        self.time_str: str = time_str
-        self.raw_json: dict = raw_json
-        self.cpu_worker_count: Optional[int] = cpu_worker_count
-        self.gpu_worker_count: Optional[int] = gpu_worker_count
-        self.__parse_raw_json()
+# class JobExecInfo:
+#     def __init__(self,
+#                  model_name: ModelName,
+#                  gpu_type: GPUType,
+#                  worker_count: int,
+#                  cross_node: bool,
+#                  train_or_inference: TrainOrInference,
+#                  batch_size: int,
+#                  total_batch_size: int,
+#                  cpu_batch_size: int,
+#                  acc_batch_size: int,
+#                  computation_proportion: int,
+#                  cpu_limit: Optional[int],
+#                  time_str: str,
+#                  raw_json: dict,
+#                  cpu_worker_count: Optional[int] = None,
+#                  gpu_worker_count: Optional[int] = None,
+#                  ):
+#         self.model_name: ModelName = model_name
+#         self.gpu_type: GPUType = gpu_type
+#         self.worker_count: int = worker_count
+#         self.cross_node: bool = cross_node
+#         self.train_or_inference: TrainOrInference = train_or_inference
+#         self.batch_size: int = batch_size
+#         self.total_batch_size: int = total_batch_size
+#         self.cpu_batch_size: int = cpu_batch_size
+#         self.acc_batch_size: int = acc_batch_size
+#         self.computation_proportion: int = computation_proportion
+#         self.cpu_limit: Optional[int] = cpu_limit
+#         self.time_str: str = time_str
+#         self.raw_json: dict = raw_json
+#         self.cpu_worker_count: Optional[int] = cpu_worker_count
+#         self.gpu_worker_count: Optional[int] = gpu_worker_count
+#         self.__parse_raw_json()
+#
+#     def __parse_raw_json(self):
+#         self.iteration_count: int = self.raw_json["iteration_count"]
+#         self.iteration_intervals: List[int] = self.raw_json["iteration_intervals"]
+#         self.total_time_ns: int = self.raw_json["total_time_ns"]
+#         self.mem_infos: List[List[int]] = self.raw_json["mem_infos"]
+#         self.utilization: List[int] = self.raw_json["utilization"]
+#         self.device_type: str = self.raw_json.get("device_type", "gpu")
+#         memories = [mem_info[-1] - mem_info[0] for mem_info in self.mem_infos]
+#         self.max_memory_consumption: int = 0 if len(memories) == 0 else max(memories)
+#         self.most_memory_consumption: int = 0 if len(memories) == 0 else most(memories)
+#         self.stabled_iteration_intervals: List[int] = self.iteration_intervals[
+#                                                       len(self.iteration_intervals) // StableWarmupStartRatio:]
+#         mean_iteration_intervals = np.mean(self.stabled_iteration_intervals)
+#         self.stabled_iteration_intervals = list(
+#             filter(lambda iteration_interval: iteration_interval < 50 * mean_iteration_intervals,
+#                    self.stabled_iteration_intervals))
+#         self.avg_stabled_iteration_interval: int = int(np.mean(self.stabled_iteration_intervals))
+#         self.stabled_utilization: List[int] = self.utilization[len(self.utilization) // StableWarmupStartRatio:]
+#         self.avg_stabled_utilization: float = float(np.mean(self.stabled_utilization))
+#
+#     def to_dict(self):
+#         return {
+#             "model_name": self.model_name.name,
+#             "gpu_type": self.gpu_type.value.name,
+#             "worker_count": self.worker_count,
+#             "cross_node": self.cross_node,
+#             "train_or_inference": self.train_or_inference.name,
+#             "batch_size": self.batch_size,
+#             "total_batch_size": self.total_batch_size,
+#             "cpu_batch_size": self.cpu_batch_size,
+#             "acc_batch_size": self.acc_batch_size,
+#             "computation_proportion": self.computation_proportion,
+#             "cpu_limit": self.cpu_limit,
+#             "time_str": self.time_str,
+#             "cpu_worker_count": self.cpu_worker_count,
+#             "gpu_worker_count": self.gpu_worker_count,
+#             "iteration_count": self.iteration_count,
+#             "device_type": self.device_type,
+#             "max_memory_consumption": self.max_memory_consumption,
+#             "avg_stabled_iteration_interval": self.avg_stabled_iteration_interval,
+#             "avg_stabled_utilization": self.avg_stabled_utilization
+#         }
 
-    def __parse_raw_json(self):
-        self.iteration_count: int = self.raw_json["iteration_count"]
-        self.iteration_intervals: List[int] = self.raw_json["iteration_intervals"]
-        self.total_time_ns: int = self.raw_json["total_time_ns"]
-        self.mem_infos: List[List[int]] = self.raw_json["mem_infos"]
-        self.utilization: List[int] = self.raw_json["utilization"]
-        self.device_type: str = self.raw_json.get("device_type", "gpu")
-        memories = [mem_info[-1] - mem_info[0] for mem_info in self.mem_infos]
-        self.max_memory_consumption: int = 0 if len(memories) == 0 else max(memories)
-        self.most_memory_consumption: int = 0 if len(memories) == 0 else most(memories)
-        self.stabled_iteration_intervals: List[int] = self.iteration_intervals[
-                                                      len(self.iteration_intervals) // StableWarmupStartRatio:]
-        mean_iteration_intervals = np.mean(self.stabled_iteration_intervals)
-        self.stabled_iteration_intervals = list(
-            filter(lambda iteration_interval: iteration_interval < 50 * mean_iteration_intervals,
-                   self.stabled_iteration_intervals))
-        self.avg_stabled_iteration_interval: int = int(np.mean(self.stabled_iteration_intervals))
-        self.stabled_utilization: List[int] = self.utilization[len(self.utilization) // StableWarmupStartRatio:]
-        self.avg_stabled_utilization: float = float(np.mean(self.stabled_utilization))
-
-    def to_dict(self):
-        return {
-            "model_name": self.model_name.name,
-            "gpu_type": self.gpu_type.value.name,
-            "worker_count": self.worker_count,
-            "cross_node": self.cross_node,
-            "train_or_inference": self.train_or_inference.name,
-            "batch_size": self.batch_size,
-            "total_batch_size": self.total_batch_size,
-            "cpu_batch_size": self.cpu_batch_size,
-            "acc_batch_size": self.acc_batch_size,
-            "computation_proportion": self.computation_proportion,
-            "cpu_limit": self.cpu_limit,
-            "time_str": self.time_str,
-            "cpu_worker_count": self.cpu_worker_count,
-            "gpu_worker_count": self.gpu_worker_count,
-            "iteration_count": self.iteration_count,
-            "device_type": self.device_type,
-            "max_memory_consumption": self.max_memory_consumption,
-            "avg_stabled_iteration_interval": self.avg_stabled_iteration_interval,
-            "avg_stabled_utilization": self.avg_stabled_utilization
-        }
+def get_data_source(data_source_name: str="data_source_ali", enabled_GPU_types=None):
+    if enabled_GPU_types is None:
+        enabled_GPU_types = {GPUType.RTX_2080Ti}
+    c = get_config("../configs/MMKP_config.json")
+    d = DataSource(data_source_config=c.data_source_configs[data_source_name],
+                   enabled_GPU_types=enabled_GPU_types)
+    return d
 
 
 def do_test():

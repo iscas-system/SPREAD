@@ -1,7 +1,8 @@
-import math
-from typing import Tuple
+from collections import defaultdict
+from typing import Tuple, Dict
 
 from mono_job_data_preprocess import *
+from object import CompCapacity, to_normalized_comp, to_real_comp
 
 grid_plot_font = 24
 grid_plot_row = 2
@@ -13,83 +14,52 @@ grid_plot_top = 0.78
 
 
 def plot_mono_job_performance(ax, model_name: ModelName,
-                              exec_infos: List[JobExecInfo]):
+                              exec_infos: List[MonoJobExecInfo],
+                              batch_sizes: List[int]):
     marker_legend_handles = list()
     batch_size_set = set()
     exec_infos = MonoJobExecInfoLoader.extract(exec_infos)
-    batch_sizes = sorted(MonoJobExecInfoLoader.batch_sizes(exec_infos))[2:]
     min_batch_size = batch_sizes[0]
-    max_batch_size = batch_sizes[2]
-    acc_type_to_batch_size_to_performance = dict()
-    for acc_type in AccType:
-        acc_exec_infos = MonoJobExecInfoLoader.extract_acc_type_with(exec_infos, acc_type=acc_type)
-        batch_sizes = MonoJobExecInfoLoader.batch_sizes(acc_exec_infos)
-        batch_sizes = list(filter(lambda bs: min_batch_size <= bs <= max_batch_size, batch_sizes))
-        batch_size_set = batch_size_set.union(batch_sizes)
-        marker_legend_handle = mlines.Line2D([], [],
-                                             color='black',
-                                             marker=acc_type.value.marker,
-                                             linestyle=acc_type.value.line,
-                                             label=f"{acc_type.value.name}")
-        # ax.plot(x_range, np.arange(1, 21) / 20.,
-        #         linestyle=":",
-        #         linewidth='4',
-        #         color="black")
-        marker_legend_handles.append(marker_legend_handle)
-        for i, batch_size in enumerate(batch_sizes):
-            iteration_intervals = list()
-            for comp in range(10, 210, 10):
-                worker_count = math.ceil(comp / 100)
-                single_worker_comp = comp // worker_count
-                single_worker_batch_size = batch_size // worker_count
-                info = MonoJobExecInfoLoader.extract(infos=acc_exec_infos, worker_count=1,
-                                                     batch_size=single_worker_batch_size,
-                                                     computation_proportion_predicate=lambda c: c == single_worker_comp)
-                if len(info) == 1:
-                    iteration_interval = info[0].avg_stabled_iteration_interval
-                else:
-                    l = MonoJobExecInfoLoader.extract(infos=acc_exec_infos, worker_count=1,
-                                                      batch_size=single_worker_batch_size,
-                                                      computation_proportion_predicate=lambda
-                                                          c: c == single_worker_comp - 5)
-                    r = MonoJobExecInfoLoader.extract(infos=acc_exec_infos, worker_count=1,
-                                                      batch_size=single_worker_batch_size,
-                                                      computation_proportion_predicate=lambda
-                                                          c: c == single_worker_comp + 5)
-                    iteration_interval = (l[0].avg_stabled_iteration_interval + r[0].avg_stabled_iteration_interval) / 2
-                if worker_count > 1:
-                    # plus communication overhead
-                    iteration_interval += get_communication_overhead(exec_infos=exec_infos, batch_size=batch_size,
-                                                                     worker_count=worker_count)
-                iteration_intervals.append(iteration_interval)
-            iteration_intervals = np.array(iteration_intervals, dtype=np.float)
-            iteration_intervals /= 1e9
-            # normalized_performances = np.min(iteration_intervals) / iteration_intervals
-            normalized_performances = 1 / iteration_intervals
-            acc_type_to_batch_size_to_performance.setdefault(acc_type, dict())
-            acc_type_to_batch_size_to_performance[acc_type].setdefault(batch_size, normalized_performances)
-
-    maximum_performance = 0
-    for bs_to_performances in acc_type_to_batch_size_to_performance.values():
-        for performances in bs_to_performances.values():
-            maximum_performance = max(max(performances), maximum_performance)
-
-    for acc_type in AccType:
-        acc_exec_infos = MonoJobExecInfoLoader.extract_acc_type_with(exec_infos, acc_type=acc_type)
-        batch_sizes = MonoJobExecInfoLoader.batch_sizes(acc_exec_infos)
-        batch_sizes = list(filter(lambda bs: min_batch_size <= bs <= max_batch_size, batch_sizes))
-        for batch_size in batch_sizes:
-            x_range = np.arange(10, 210, step=10)
-            normalized_performances = acc_type_to_batch_size_to_performance[acc_type][batch_size] / maximum_performance
-            ax.plot(x_range, normalized_performances,
-                    marker=acc_type.value.marker,
-                    linestyle=acc_type.value.line,
-                    linewidth='1',
-                    label=f"{acc_type.value.name} ({batch_size})",
-                    color=batch_size_color(batch_size))
-    color_legend_handles = list()
-    batch_sizes = sorted(list(batch_size_set))
+    max_batch_size = batch_sizes[-1]
+    batch_size_to_performance = dict()
+    gpu_type = GPUType.RTX_2080Ti
+    gpu_exec_infos = MonoJobExecInfoLoader.extract(exec_infos, GPU_type=gpu_type)
+    gpu_spec = get_GPU_spec(gpu_type)
+    marker_legend_handle = mlines.Line2D([], [],
+                                         color='black',
+                                         marker=gpu_spec.marker,
+                                         linestyle=gpu_spec.line,
+                                         label=f"{gpu_spec.name}")
+    ds = get_data_source()
+    # marker_legend_handles.append(marker_legend_handle)
     for i, batch_size in enumerate(batch_sizes):
+        iteration_intervals = list()
+        for comp in range(10, 110, 10):
+            iter_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                          worker_count=1, cross_node=False, comp_req=to_normalized_comp(comp))
+            iteration_intervals.append(iter_time)
+        iteration_intervals = np.array(iteration_intervals, dtype=float)
+        iteration_intervals /= 1e9
+        # normalized_performances = np.min(iteration_intervals) / iteration_intervals
+        normalized_performances = 1 / iteration_intervals
+        batch_size_to_performance[batch_size] = normalized_performances
+
+    # maximum_performance = 0
+    # for performances in batch_size_to_performance.values():
+    #     maximum_performance = max(max(performances), maximum_performance)
+
+    for batch_size in batch_sizes:
+        x_range = np.arange(10, 110, step=10)
+        normalized_performances = batch_size_to_performance[batch_size] / np.max(batch_size_to_performance[batch_size])
+        ax.plot(x_range, normalized_performances,
+                marker=gpu_spec.marker,
+                linestyle=gpu_spec.line,
+                linewidth='1',
+                label=f"{gpu_spec.name} ({batch_size})",
+                color=batch_size_color(batch_size))
+
+    color_legend_handles = list()
+    for i, batch_size in enumerate([16, 32, 64, 128, 256, 512]):
         handle = mlines.Line2D([], [],
                                marker="s",
                                linestyle="None",
@@ -115,8 +85,8 @@ def plot_mono_job_performance(ax, model_name: ModelName,
 
 def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
                                                      worker_counts: Tuple[int, ...],
-                                                     acc_type: AccType,
-                                                     exec_infos: List[JobExecInfo]):
+                                                     gpu_type: GPUType,
+                                                     exec_infos: List[MonoJobExecInfo]):
     marker_legend_handles = list()
     batch_size_set = set()
     StyleSpec = namedtuple(typename="StyleSpec", field_names="line marker label")
@@ -125,8 +95,8 @@ def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
         2: StyleSpec("--", "^", "2 sub-jobs")
     }
     for worker_count in worker_counts:
-        acc_exec_infos = MonoJobExecInfoLoader.extract_acc_type_with(exec_infos, acc_type=acc_type)
-        batch_sizes = MonoJobExecInfoLoader.batch_sizes(acc_exec_infos)
+        gpu_exec_infos = MonoJobExecInfoLoader.extract_gpu_type_with(exec_infos, GPU_type=gpu_type)
+        batch_sizes = MonoJobExecInfoLoader.batch_sizes(gpu_exec_infos)
         batch_sizes = batch_sizes[2:]
         batch_size_set = batch_size_set.union(batch_sizes)
         x_range = np.arange(5, 105, step=5)
@@ -142,7 +112,7 @@ def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
                 color="black")
         marker_legend_handles.append(marker_legend_handle)
         for i, batch_size in enumerate(batch_sizes):
-            infos = MonoJobExecInfoLoader.extract(infos=acc_exec_infos, batch_size=batch_size,
+            infos = MonoJobExecInfoLoader.extract(infos=gpu_exec_infos, batch_size=batch_size,
                                                   worker_count=worker_count)
             infos = MonoJobExecInfoLoader.sort_by_computation(infos)
             assert len(infos) == 20
@@ -178,7 +148,7 @@ def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
     ax.set_ylabel('Performance')
 
 
-def plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]]):
+def plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]]):
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 21})
     col = grid_plot_col
@@ -186,18 +156,18 @@ def plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos: Dict[Model
     fig, axes = plt.subplots(row, col, figsize=(32, 8))
 
     handles = None
-    acc_type = AccType.RTX_2080Ti
+    gpu_type = GPUType.RTX_2080Ti
     for i, item in enumerate(mono_job_exec_infos.items()):
         model_name, exec_infos = item
         infos = MonoJobExecInfoLoader.extract(exec_infos,
                                               train_or_inference=TrainOrInference.train,
-                                              acc_type=acc_type)
+                                              GPU_type=gpu_type)
         plot_mono_job_performance_with_diff_worker_count(axes[i // col, i % col],
                                                          model_name,
                                                          worker_counts=(1, 2),
-                                                         acc_type=acc_type,
+                                                         GPU_type=gpu_type,
                                                          exec_infos=infos)
-        # new_handles = plot_mono_job_dist_performance(axes[i % col], model_name, exec_infos, acc_type, comps=comps)
+        # new_handles = plot_mono_job_dist_performance(axes[i % col], model_name, exec_infos, gpu_type, comps=comps)
         # if handles is None:
         #     handles = new_handles
     fig.tight_layout()
@@ -209,7 +179,9 @@ def plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos: Dict[Model
     mpl.rcParams.update({'font.size': original_fontsize})
 
 
-def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]]):
+def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
+                               show_model_batch_sizes: Dict[ModelName, List[int]],
+                               model_sort: List[ModelName]):
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 24})
     col = grid_plot_col
@@ -217,9 +189,10 @@ def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[JobExec
     fig, axes = plt.subplots(row, col, figsize=(32, 8))
 
     handles = None
-    for i, item in enumerate(mono_job_exec_infos.items()):
-        model_name, exec_infos = item
-        new_handles = plot_mono_job_performance(axes[i // col, i % col], model_name, exec_infos)
+    for i, model_name in enumerate(model_sort):
+        batch_sizes = show_model_batch_sizes[model_name]
+        exec_infos = mono_job_exec_infos[model_name]
+        new_handles = plot_mono_job_performance(axes[i // col, i % col], model_name, exec_infos, batch_sizes)
         if handles is None or len(new_handles) > len(handles):
             handles = new_handles
     lgd = fig.legend(handles=handles, loc=grid_plot_legend_pot, ncol=len(handles))
@@ -230,7 +203,7 @@ def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[JobExec
     mpl.rcParams.update({'font.size': original_fontsize})
 
 
-def plot_mono_jobs_memory(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]],
+def plot_mono_jobs_memory(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
                           train_or_inference: TrainOrInference):
     fig, ax = plt.subplots(figsize=(10, 4))
     labels = [model_name.name for model_name in ModelName]
@@ -239,7 +212,7 @@ def plot_mono_jobs_memory(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]
     for model_name in ModelName:
         exec_infos = mono_job_exec_infos[model_name]
         exec_infos = MonoJobExecInfoLoader.extract(exec_infos, train_or_inference=train_or_inference,
-                                                   acc_type=AccType.RTX_2080Ti, worker_count=1)
+                                                   GPU_type=GPUType.RTX_2080Ti, worker_count=1)
         batch_sizes = MonoJobExecInfoLoader.batch_sizes(exec_infos)
         for i, batch_size in enumerate(batch_sizes):
             same_batch_size_infos = MonoJobExecInfoLoader.extract(exec_infos, batch_size=batch_size)
@@ -276,9 +249,10 @@ def plot_mono_jobs_memory(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]
 
 def plot_mono_job_memory_spread_compare(ax,
                                         model_name: ModelName,
-                                        exec_infos: List[JobExecInfo],
-                                        acc_type: AccType,
+                                        exec_infos: List[MonoJobExecInfo],
+                                        gpu_type: GPUType,
                                         worker_counts: Tuple[int, int, int],
+                                        batch_sizes: List[int]
                                         ):
     worker_count_to_spreading_label = {
         1: "1 sub-job (No spreading)",
@@ -293,14 +267,11 @@ def plot_mono_job_memory_spread_compare(ax,
     local_worker_count_to_diff_bs_mem = defaultdict(list)
     # idx_to_dist_comp_to_diff_bs_overhead = defaultdict(lambda :defaultdict(list))
     idx_to_worker_count_to_diff_bs_mem = defaultdict(lambda: defaultdict(list))
-    batch_size_set = MonoJobExecInfoLoader.batch_sizes(MonoJobExecInfoLoader.extract(exec_infos, worker_count=1))
-    batch_sizes = sorted(list(batch_size_set))
-    batch_sizes = batch_sizes[2:]
-    acc_exec_infos = MonoJobExecInfoLoader.extract_acc_type_with(exec_infos, acc_type=acc_type)
+    gpu_exec_infos = MonoJobExecInfoLoader.extract(exec_infos, GPU_type=gpu_type)
     for worker_count_spec in worker_counts_specs:
         local_or_dist, worker_count, idx, _ = worker_count_spec
         local = local_or_dist == "local"
-        comp_exec_infos = MonoJobExecInfoLoader.extract(acc_exec_infos,
+        comp_exec_infos = MonoJobExecInfoLoader.extract(gpu_exec_infos,
                                                         computation_proportion_predicate=lambda cp: cp == 50,
                                                         worker_count=1)
         for i, batch_size in enumerate(batch_sizes):
@@ -374,7 +345,108 @@ def plot_mono_job_memory_spread_compare(ax,
     return performance_bar_legend_artists
 
 
-def plot_mono_jobs_memory_spread_compare(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]]):
+def plot_mono_job_memory_spread_compare_absolute(ax,
+                                                 model_name: ModelName,
+                                                 exec_infos: List[MonoJobExecInfo],
+                                                 gpu_type: GPUType,
+                                                 worker_counts: Tuple[int, int, int],
+                                                 batch_sizes: List[int]
+                                                 ):
+    worker_count_to_spreading_label = {
+        1: "1 sub-job (No spreading)",
+        2: "Spread to 2 sub-jobs",
+        4: "Spread to 4 sub-jobs"
+    }
+    worker_counts_specs = [('local', worker_counts[0], 0, 0),  # comp, dist or local, worker_count, idx, color_idx
+                           ('dist_0', worker_counts[1], 0, 1),
+                           ('dist_1', worker_counts[2], 0, 2)]
+    exec_infos = MonoJobExecInfoLoader.extract(exec_infos, train_or_inference=TrainOrInference.train)
+    # local_comp_to_diff_bs_overhead = defaultdict(list)
+    local_worker_count_to_diff_bs_mem = defaultdict(list)
+    # idx_to_dist_comp_to_diff_bs_overhead = defaultdict(lambda :defaultdict(list))
+    idx_to_worker_count_to_diff_bs_mem = defaultdict(lambda: defaultdict(list))
+    gpu_exec_infos = MonoJobExecInfoLoader.extract(exec_infos, GPU_type=gpu_type)
+    for worker_count_spec in worker_counts_specs:
+        local_or_dist, worker_count, idx, _ = worker_count_spec
+        local = local_or_dist == "local"
+        comp_exec_infos = MonoJobExecInfoLoader.extract(gpu_exec_infos,
+                                                        computation_proportion_predicate=lambda cp: cp == 50,
+                                                        worker_count=1)
+        for i, batch_size in enumerate(batch_sizes):
+            batch_size //= worker_count
+            info = MonoJobExecInfoLoader.extract(infos=comp_exec_infos, batch_size=batch_size)
+            local_info = MonoJobExecInfoLoader.extract(infos=comp_exec_infos, batch_size=int(batch_size * worker_count))
+            assert len(info) == 1
+            assert len(local_info) == 1
+            info = info[0]
+            local_info = local_info[0]
+            curr_mem = info.most_memory_consumption
+            if worker_count == 1:
+                local_worker_count_to_diff_bs_mem[worker_count].append(
+                    (info.most_memory_consumption, info.most_memory_consumption / GBi))
+            else:
+                idx_to_worker_count_to_diff_bs_mem[idx][worker_count].append(
+                    (curr_mem, curr_mem / GBi))
+
+    print(f"{model_name}", local_worker_count_to_diff_bs_mem)
+    print(f"{model_name}", idx_to_worker_count_to_diff_bs_mem)
+
+    N = len(batch_sizes)
+    ind = np.arange(N)
+    width = 0.25
+
+    performance_bar_legend_artists = list()
+    performance_bars = list()
+    local_hatch = r"/"
+    dist_hatches = [r"/", r"/"]
+    edgecolor = None
+
+    for i, worker_count_spec in enumerate(worker_counts_specs):
+        local_or_dist, worker_count, idx, color_idx = worker_count_spec
+        local = local_or_dist == "local"
+        worker_count_to_diff_bs_mem = local_worker_count_to_diff_bs_mem if local else \
+            idx_to_worker_count_to_diff_bs_mem[idx]
+        diff_bs_mem = worker_count_to_diff_bs_mem[worker_count]
+        normalized_mem = np.array([p[-1] for p in diff_bs_mem])
+        # GPU_label = f"{worker_count} GPU"
+        spreading_label = worker_count_to_spreading_label[worker_count]
+        spreading_color = colors[color_idx]
+        if local:
+            hatch = local_hatch
+        else:
+            hatch = dist_hatches[int(local_or_dist.split("_")[-1])]
+        performance_bars.append(ax.bar(
+            ind + i * width,
+            normalized_mem,
+            edgecolor=edgecolor,
+            width=width,
+            color=spreading_color,
+            label=spreading_label,
+            hatch=hatch
+        ))
+        handle = Patch(
+            facecolor=spreading_color,
+            edgecolor=edgecolor,
+            label=spreading_label,
+            hatch=hatch
+        )
+        performance_bar_legend_artists.append(handle)
+    ax.set_xlabel(f"Batch Sizes")
+    ax.set_title(f"{model_name.name}")
+    ax.set_ylabel('Memory (GB)')
+    ax.set_xticks(ind + (len(worker_counts_specs) - 1) / 2 * width, [str(bs) for bs in batch_sizes])
+    ax.set_yticks([0, 0.25 * 11, 0.5 * 11, 11])
+    ax.yaxis.grid(True)
+    # ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{:.2f}'.format))
+    ax.yaxis.set_major_formatter(
+        plt_ticker.FuncFormatter(lambda v, pos: '{:2.1f}'.format(v) if v != round(v) else int(v)))
+    return performance_bar_legend_artists
+
+
+def plot_mono_jobs_memory_spread_compare(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
+                                         show_model_batch_sizes: Dict[ModelName, List[int]],
+                                         model_sort: List[ModelName],
+                                         absolute: bool = False):
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': grid_plot_font})
     col = grid_plot_col
@@ -382,11 +454,17 @@ def plot_mono_jobs_memory_spread_compare(mono_job_exec_infos: Dict[ModelName, Li
     fig, axes = plt.subplots(row, col, figsize=(grid_plot_width, grid_plot_height))
 
     handles = None
-    acc_type = AccType.RTX_2080Ti
-    for i, item in enumerate(mono_job_exec_infos.items()):
-        model_name, exec_infos = item
-        new_handles = plot_mono_job_memory_spread_compare(axes[i // col, i % col], model_name, exec_infos, acc_type,
-                                                          worker_counts=(1, 2, 4))
+    gpu_type = GPUType.RTX_2080Ti
+    for i, model_name in enumerate(model_sort):
+        batch_sizes = show_model_batch_sizes[model_name]
+        exec_infos = mono_job_exec_infos[model_name]
+        if absolute:
+            new_handles = plot_mono_job_memory_spread_compare_absolute(axes[i // col, i % col], model_name, exec_infos,
+                                                                       gpu_type,
+                                                                       worker_counts=(1, 2, 4), batch_sizes=batch_sizes)
+        else:
+            new_handles = plot_mono_job_memory_spread_compare(axes[i // col, i % col], model_name, exec_infos, gpu_type,
+                                                              worker_counts=(1, 2, 4), batch_sizes=batch_sizes)
         if handles is None:
             handles = new_handles
     fig.tight_layout()
@@ -395,15 +473,19 @@ def plot_mono_jobs_memory_spread_compare(mono_job_exec_infos: Dict[ModelName, Li
     # fig.suptitle(f"Memory Quotas of Workers With Various Spreading Configurations", fontsize="x-large")
     fig.subplots_adjust(top=0.83)
     # fig.show()
-    fig.savefig(output_path(f"mono_job_dist_memory.pdf"), dpi=400, format='pdf', bbox_inches='tight')
+    if absolute:
+        file_name = "mono_job_dist_memory_absolute.pdf"
+    else:
+        file_name = "mono_job_dist_memory.pdf"
+    fig.savefig(output_path(file_name), dpi=400, format='pdf', bbox_inches='tight')
     mpl.rcParams.update({'font.size': original_fontsize})
 
 
-def get_communication_overhead(exec_infos: List[JobExecInfo], batch_size: int, worker_count: int):
-    local_50 = MonoJobExecInfoLoader.extract(exec_infos, batch_size=batch_size, acc_type=AccType.RTX_2080Ti,
+def get_communication_overhead(exec_infos: List[MonoJobExecInfo], batch_size: int, worker_count: int):
+    local_50 = MonoJobExecInfoLoader.extract(exec_infos, batch_size=batch_size, GPU_type=GPUType.RTX_2080Ti,
                                              worker_count=1,
                                              computation_proportion_predicate=lambda cp: cp == 50)
-    dist_50 = MonoJobExecInfoLoader.extract(exec_infos, batch_size=batch_size, acc_type=AccType.RTX_2080Ti,
+    dist_50 = MonoJobExecInfoLoader.extract(exec_infos, batch_size=batch_size, GPU_type=GPUType.RTX_2080Ti,
                                             worker_count=worker_count,
                                             computation_proportion_predicate=lambda cp: cp == 50)
     overhead = dist_50[0].avg_stabled_iteration_interval - local_50[0].avg_stabled_iteration_interval
@@ -412,9 +494,10 @@ def get_communication_overhead(exec_infos: List[JobExecInfo], batch_size: int, w
 
 def plot_mono_job_dist_performance(ax,
                                    model_name: ModelName,
-                                   exec_infos: List[JobExecInfo],
-                                   acc_type: AccType,
-                                   comps: Tuple[int, int, int, int, int] = (100, 50, 60, 25, 30)
+                                   exec_infos: List[MonoJobExecInfo],
+                                   gpu_type: GPUType,
+                                   batch_sizes: List[int],
+                                   comps: Tuple[int, int, int, int, int] = (100, 50, 60, 25, 30),
                                    ):
     computation_proportions = [(comps[0], 'local', 1, 0, 0),  # comp, dist or local, worker_count, idx, color_idx
                                (comps[1], 'dist_0', 2, 0, 1),
@@ -427,19 +510,16 @@ def plot_mono_job_dist_performance(ax,
     local_comp_to_diff_bs_performance = defaultdict(list)
     idx_to_dist_comp_to_diff_bs_overhead = defaultdict(lambda: defaultdict(list))
     idx_to_dist_comp_to_diff_bs_performance = defaultdict(lambda: defaultdict(list))
-    batch_size_set = MonoJobExecInfoLoader.batch_sizes(MonoJobExecInfoLoader.extract(exec_infos, worker_count=1))
-    batch_sizes = sorted(list(batch_size_set))
-    batch_sizes = batch_sizes[2:]
-    acc_exec_infos = MonoJobExecInfoLoader.extract_acc_type_with(exec_infos, acc_type=acc_type)
+    gpu_exec_infos = MonoJobExecInfoLoader.extract(exec_infos, GPU_type=gpu_type)
     for computation_proportion in computation_proportions:
         comp, local_or_dist, worker_count, idx, _ = computation_proportion
         local = local_or_dist == "local"
         if local and comp in local_comp_to_diff_bs_performance:
             continue
-        comp_exec_infos = MonoJobExecInfoLoader.extract(acc_exec_infos,
+        comp_exec_infos = MonoJobExecInfoLoader.extract(gpu_exec_infos,
                                                         computation_proportion_predicate=lambda cp: cp == comp,
                                                         worker_count=worker_count)
-        local_comp_exec_infos = MonoJobExecInfoLoader.extract(acc_exec_infos,
+        local_comp_exec_infos = MonoJobExecInfoLoader.extract(gpu_exec_infos,
                                                               computation_proportion_predicate=lambda cp: cp == comp,
                                                               worker_count=1)
         for i, batch_size in enumerate(batch_sizes):
@@ -568,7 +648,139 @@ def plot_mono_job_dist_performance(ax,
     return performance_bar_legend_artists + overhead_bar_legend_artist_list
 
 
-def plot_mono_jobs_dist_performance(mono_job_exec_infos: Dict[ModelName, List[JobExecInfo]], comps):
+def plot_mono_job_spread_performance(ax,
+                                     model_name: ModelName,
+                                     exec_infos: List[MonoJobExecInfo],
+                                     gpu_type: GPUType,
+                                     batch_sizes: List[int]
+                                     ):
+    class BarMeta:
+        def __init__(self, name: str, original: bool, worker_count: int, cross_node: bool, color_idx: int):
+            self.name: str = name
+            self.original: bool = original
+            self.worker_count: int = worker_count
+            self.cross_node: bool = cross_node
+            self.color_idx: int = color_idx
+
+    bar_groups = [BarMeta(name="original", original=True, worker_count=1, cross_node=False, color_idx=0),
+                  # comp, dist or local, worker_count, idx, color_idx
+                  BarMeta(name="spread_2_in", original=False, worker_count=2, cross_node=False, color_idx=1),
+                  BarMeta(name="spread_2_cross", original=False, worker_count=2, cross_node=True, color_idx=2),
+                  BarMeta(name="spread_4_in", original=False, worker_count=4, cross_node=False, color_idx=3),
+                  BarMeta(name="spread_4_cross", original=False, worker_count=4, cross_node=True, color_idx=4), ]
+
+    original_bs_to_max_perf_comp = dict()
+    original_bar_meta = bar_groups[0]
+    ds = get_data_source()
+
+    def get_bar_meta_comp(bar_meta: BarMeta, batch_size: int) -> Optional[int]:
+        if bar_meta.original:
+            if batch_size in original_bs_to_max_perf_comp:
+                return original_bs_to_max_perf_comp[batch_size]
+            original_comp_iter_max = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size,
+                                                            GPU_type=gpu_type,
+                                                            worker_count=original_bar_meta.worker_count,
+                                                            cross_node=original_bar_meta.cross_node,
+                                                            comp_req=CompCapacity)
+            k = original_comp_iter_max / CompCapacity
+            target_original_comp_req = 2
+            for comp_req in range(2, CompCapacity):
+                curr_iter = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                   worker_count=original_bar_meta.worker_count,
+                                                   cross_node=original_bar_meta.cross_node,
+                                                   comp_req=comp_req)
+                prev_iter = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                   worker_count=original_bar_meta.worker_count,
+                                                   cross_node=original_bar_meta.cross_node,
+                                                   comp_req=comp_req - 1)
+                neighbor_k = curr_iter - prev_iter
+                if neighbor_k < k:
+                    target_original_comp_req = comp_req
+                    break
+            original_comp = to_real_comp(target_original_comp_req)
+            original_bs_to_max_perf_comp[batch_size] = original_comp
+            return original_comp
+
+        original_comp = original_bs_to_max_perf_comp[batch_size]
+
+        original_comp_req = to_normalized_comp(original_comp)
+        base_comp_req = original_comp_req // bar_meta.worker_count
+        target_comp_req = base_comp_req
+        original_iteration_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                    worker_count=original_bar_meta.worker_count,
+                                                    cross_node=original_bar_meta.cross_node, comp_req=original_comp_req)
+        while target_comp_req <= CompCapacity:
+            curr_iteration_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                    worker_count=bar_meta.worker_count,
+                                                    cross_node=bar_meta.cross_node, comp_req=target_comp_req)
+            if curr_iteration_time > original_iteration_time:
+                target_comp_req += 1
+            else:
+                break
+        if target_comp_req > CompCapacity:
+            return 0
+        return to_real_comp(target_comp_req)
+
+    bar_meta_diff_bs_comps = defaultdict(list)
+    for bar_meta in bar_groups:
+        diff_bs_comps = list()
+        for i, batch_size in enumerate(batch_sizes):
+            comp = get_bar_meta_comp(bar_meta, batch_size=batch_size)
+            diff_bs_comps.append(comp)
+        bar_meta_diff_bs_comps[bar_meta.name] = diff_bs_comps
+
+    print(f"{model_name} diff_bs_comps", bar_meta_diff_bs_comps)
+
+    N = len(batch_sizes)
+    ind = np.arange(N)
+    width = 0.17
+
+    comp_bar_legend_artists = list()
+    comp_bars = list()
+    hatch = r"/"
+    edgecolor = None
+
+    for i, bar_meta in enumerate(bar_groups):
+        is_original, worker_count, cross_node, color_idx = bar_meta.original, bar_meta.worker_count, bar_meta.cross_node, bar_meta.color_idx
+        diff_bs_comps = bar_meta_diff_bs_comps[bar_meta.name]
+
+        comp_label = f"{worker_count} sub-job" if worker_count == 1 else f"{worker_count} sub-jobs"
+        if worker_count > 1:
+            comp_label += " (CN)" if cross_node else " (IN)"
+        comp_color = colors[color_idx]
+        comp_bars.append(ax.bar(
+            ind + i * width,
+            diff_bs_comps,
+            edgecolor=edgecolor,
+            width=width,
+            color=comp_color,
+            label=comp_label,
+            hatch=hatch
+        ))
+        handle = Patch(
+            facecolor=comp_color,
+            edgecolor=edgecolor,
+            label=comp_label,
+            hatch=hatch
+        )
+        comp_bar_legend_artists.append(handle)
+    ax.set_xlabel(f"Batch Sizes")
+    ax.set_title(f'{model_name.name}')
+    ax.set_ylabel('Comp. Resource')
+    ax.set_xticks(ind + (len(bar_groups) - 1) / 2 * width, [str(bs) for bs in batch_sizes])
+    ax.yaxis.set_major_locator(MultipleLocator(25))
+    ax.yaxis.set_major_formatter('{x:.0f}%')
+    # ax.set_yticks([0, 50, 100])
+    ax.yaxis.grid(True)
+    # ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{}%'.format))
+    # ax_overhead.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
+    # return performance_bar_legend_artists + overhead_bar_legend_artist_list
+    return comp_bar_legend_artists
+
+
+def plot_mono_jobs_dist_performance_spread(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
+                                           show_model_batch_sizes: Dict[ModelName, List[int]],
+                                           model_sort: List[ModelName]):
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': grid_plot_font})
     col = grid_plot_col
@@ -576,34 +788,85 @@ def plot_mono_jobs_dist_performance(mono_job_exec_infos: Dict[ModelName, List[Jo
     fig, axes = plt.subplots(row, col, figsize=(grid_plot_width, grid_plot_height))
 
     handles = None
-    acc_type = AccType.RTX_2080Ti
-    for i, item in enumerate(mono_job_exec_infos.items()):
-        model_name, exec_infos = item
-        new_handles = plot_mono_job_dist_performance(axes[i // col, i % col], model_name, exec_infos, acc_type, comps)
+    gpu_type = GPUType.RTX_2080Ti
+    for i, model_name in enumerate(model_sort):
+        batch_sizes = show_model_batch_sizes[model_name]
+        exec_infos = mono_job_exec_infos[model_name]
+        new_handles = plot_mono_job_spread_performance(axes[i // col, i % col], model_name, exec_infos, gpu_type,
+                                                       batch_sizes=batch_sizes)
         if handles is None:
             handles = new_handles
     fig.tight_layout()
     lgd = fig.legend(handles=handles, loc=grid_plot_legend_pot, ncol=len(handles))
     lgd.get_frame().set_alpha(None)
-    # fig.suptitle(f"Training Performance With Various Spreading Configurations (Requesting {comps[0]}% Computation Quota)", fontsize="x-large")
     fig.subplots_adjust(top=grid_plot_top)
-    # fig.show()
-    fig.savefig(output_path(f"mono_job_dist_performance_{comps[0]}.pdf"), dpi=400, format='pdf', bbox_inches='tight')
-    # save_fig(fig, output_path(f"mono_job_dist_performance.pdf"))
+    fig.savefig(output_path(f"mono_job_dist_performance_spread.pdf"), dpi=400, format='pdf',
+                bbox_inches='tight')
+    mpl.rcParams.update({'font.size': original_fontsize})
+
+
+def plot_mono_jobs_dist_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
+                                    show_model_batch_sizes: Dict[ModelName, List[int]],
+                                    model_sort: List[ModelName],
+                                    comps: Tuple):
+    original_fontsize = mpl.rcParams["font.size"]
+    mpl.rcParams.update({'font.size': grid_plot_font})
+    col = grid_plot_col
+    row = grid_plot_row
+    fig, axes = plt.subplots(row, col, figsize=(grid_plot_width, grid_plot_height))
+
+    handles = None
+    gpu_type = GPUType.RTX_2080Ti
+    for i, model_name in enumerate(model_sort):
+        batch_sizes = show_model_batch_sizes[model_name]
+        exec_infos = mono_job_exec_infos[model_name]
+        new_handles = plot_mono_job_dist_performance(axes[i // col, i % col], model_name, exec_infos, gpu_type,
+                                                     batch_sizes=batch_sizes, comps=comps)
+        if handles is None:
+            handles = new_handles
+    fig.tight_layout()
+    lgd = fig.legend(handles=handles, loc=grid_plot_legend_pot, ncol=len(handles))
+    lgd.get_frame().set_alpha(None)
+    fig.subplots_adjust(top=grid_plot_top)
+    fig.savefig(output_path(f"mono_job_dist_performance_{comps[0]}.pdf"), dpi=400, format='pdf',
+                bbox_inches='tight')
     mpl.rcParams.update({'font.size': original_fontsize})
 
 
 def main():
-    mono_job_exec_infos = MonoJobExecInfoLoader.load_infos("./datas/mono_data")
+    data_source = get_data_source()
+    model_sort = [
+        ModelName.SqueezeNet,
+        ModelName.YoloV5S,
+        ModelName.MobileNetV2,
+        ModelName.EfficientNet,
+        ModelName.GhostNet,
+        ModelName.ShuffleNet,
+        ModelName.HarDNet,
+        ModelName.MEALV2
+    ]
+    show_model_batch_sizes = {
+        ModelName.SqueezeNet: [32, 64, 128, 256],
+        ModelName.YoloV5S: [16, 32, 64, 128],
+        ModelName.MobileNetV2: [16, 32, 64, 128],
+        ModelName.EfficientNet: [16, 32, 64],
+        ModelName.GhostNet: [32, 64, 128, 256],
+        ModelName.ShuffleNet: [32, 64, 128, 256],
+        ModelName.HarDNet: [32, 64, 128, 256],
+        ModelName.MEALV2: [64, 128, 256, 512],
+    }
 
-    plot_mono_jobs_memory_spread_compare(mono_job_exec_infos)
+    # plot_mono_jobs_memory_spread_compare(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes,
+    #                                      model_sort=model_sort, absolute=True)
+    #
+    # plot_mono_jobs_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes,
+    #                            model_sort=model_sort)
 
-    # plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos)
-    plot_mono_jobs_performance(mono_job_exec_infos)
-
-    plot_mono_jobs_dist_performance(mono_job_exec_infos, comps=(100, 50, 60, 25, 30))
-    plot_mono_jobs_dist_performance(mono_job_exec_infos, comps=(80, 40, 50, 20, 25))
-    plot_mono_jobs_dist_performance(mono_job_exec_infos, comps=(60, 30, 40, 15, 20))
+    plot_mono_jobs_dist_performance_spread(data_source.mono_job_data,
+                                           show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort)
+    # plot_mono_jobs_dist_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort, comps=(100, 50, 60, 25, 30))
+    # plot_mono_jobs_dist_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort, comps=(80, 40, 50, 20, 25))
+    # plot_mono_jobs_dist_performance(mono_job_exec_infos, comps=(60, 30, 40, 15, 20))
     # plot_mono_jobs_performance(mono_job_exec_infos, train_or_inference=TrainOrInference.inference)
     # plot_mono_jobs_memory(mono_job_exec_infos, train_or_inference=TrainOrInference.inference)
 

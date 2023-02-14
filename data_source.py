@@ -193,7 +193,7 @@ class DataSource:
         p = str(pathlib.Path(__file__).parent / self.data_source_config.mono_job_data_path)
         mono_job_data = MonoJobExecInfoLoader.load_infos(p)
         self.mono_job_datas[self.data_source_config.mono_job_data_path] = mono_job_data
-        self.mono_job_data = self.mono_job_datas[self.data_source_config.mono_job_data_path]
+        self.mono_job_data: Dict[ModelName, List[MonoJobExecInfo]] = self.mono_job_datas[self.data_source_config.mono_job_data_path]
 
     def __init_job_data(self):
         job_data_path = str(pathlib.Path(__file__).parent / self.data_source_config.submit_table_path)
@@ -313,8 +313,9 @@ class DataSource:
                 break
         less_idx = greater_idx - 1 if greater_idx > 0 else 0
         if less_idx == greater_idx:
-            comp = infos[less_idx].computation_proportion
-            return factor * infos[less_idx].avg_stabled_iteration_interval / (computation_proportion / comp)
+            comp_k = (infos[-1].avg_stabled_iteration_interval - infos[-2].avg_stabled_iteration_interval) / (infos[-1].computation_proportion - infos[-2].computation_proportion)
+            comp_b = infos[-1].avg_stabled_iteration_interval - comp_k * infos[-1].computation_proportion
+            return comp_k * computation_proportion + comp_b
         less_comp = infos[less_idx].computation_proportion
         greater_comp = infos[greater_idx].computation_proportion
         iteration_interval_diff = infos[greater_idx].avg_stabled_iteration_interval - infos[
