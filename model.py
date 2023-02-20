@@ -49,14 +49,14 @@ class SolverParameters4(BaseModel):
 
     solver_type: SolverEnum
     timeout: int
-    splitting_job_ID_task_sets: Dict[str, List[List[str]]]
-    GPU_type: GPUType
-    dist_tasks: List[Tuple[str, ...]]
+    job_ID_to_spread_job_IDs: Dict[str, List[str]]
+    spread_job_ID_to_task_sets: Dict[str, List[str]]
     GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
+    in_node_spread_job_IDs: List[str]
+    cross_node_spread_job_IDs: List[str]
+    dist_tasks: List[Tuple[str, ...]]
     task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
     GPU_ID_to_node_id: Dict[str, str]
-    in_node_job_IDs: List[str]
-    cross_node_job_IDs: List[str]
 
 class SolverResult(BaseModel):
     class Config:
@@ -117,6 +117,11 @@ class SnapshotRecordParameters(BaseModel):
     scheduler_name: str
     scheduler_type: SchedulerEnum
     solver_type: Optional[SolverEnum]
+    waiting_jobs: int
+    done_jobs: int
+    running_jobs: int
+    dist_jobs: int
+    spread_jobs: int
     GPU_type_to_GPU_IDs: Dict[GPUType, Set[str]]
     dist_job_to_tasks: Dict[str, Tuple[str, ...]]
     task_comp_mem_requirements: Dict[str, Tuple[int, int]]

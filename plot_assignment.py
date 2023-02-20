@@ -10,6 +10,7 @@ import numpy as np
 import pydantic
 from matplotlib.patches import Patch
 
+import config
 from cluster import Assignments
 from common import get_fig_dir, get_json_dir
 from log import info
@@ -27,14 +28,14 @@ def init_global_params():
 init_global_params()
 
 
-def do_snapshot_record_plot(session_id: str, is_preemptive_interval: bool, snapshot_record_parameters: SnapshotRecordParameters):
+def do_snapshot_record_plot(session_id: str, iteration_idx: int, is_preemptive_interval: bool, snapshot_record_parameters: SnapshotRecordParameters):
     if snapshot_record_parameters.solver_type is None:
         solver_type = "None"
     else:
         solver_type = snapshot_record_parameters.solver_type
 
     filename = datetime.datetime.now().strftime(
-        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_%Y-%m-%d_%H-%M-%S_{np.around(snapshot_record_parameters.profit, decimals=1)}_{is_preemptive_interval}")
+        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{':04'.format(iteration_idx)}_{np.around(snapshot_record_parameters.profit, decimals=1)}_{is_preemptive_interval}")
     json_filepath = os.path.join(get_json_dir(session_id), filename + ".json")
     fig_filepath = os.path.join(get_fig_dir(session_id), filename + ".pdf")
     info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")
@@ -351,7 +352,8 @@ def do_test():
         GPU_type = GPU_ID_to_GPU_type[GPU_ID]
         for task_ID in task_IDs:
             GPU_type_to_task_comp_mem_requirements[GPU_type][task_ID] = task_comp_mem_requirements[task_ID]
-    assignments_wrapped = Assignments.from_solver_assigment(GPU_ID_to_GPU_type=GPU_ID_to_GPU_type,
+    assignments_wrapped = Assignments.from_solver_assigment(cluster_config=None,
+                                                            GPU_ID_to_GPU_type=GPU_ID_to_GPU_type,
                                                             GPU_type_to_task_comp_mem_requirements=GPU_type_to_task_comp_mem_requirements,
                                                             solver_assignments=assignments)
     over_supplied_assignments_wrapped = assignments_wrapped.supplement_over_supply()

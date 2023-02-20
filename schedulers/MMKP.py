@@ -212,6 +212,7 @@ class MMKPScheduler(Scheduler):
         GPU_type_to_task_comp_mem_requirements: Dict[
             GPUType, Dict[str, Tuple[int, int]]] = {self.GPU_type: task_comp_mem_requirements}
         assignments = Assignments.from_solver_assigment(
+            cluster_config=self.cluster.cluster_config,
             GPU_ID_to_GPU_type=self.cluster.cluster_config.GPU_ID_to_GPU_type,
             GPU_type_to_task_comp_mem_requirements=GPU_type_to_task_comp_mem_requirements,
             solver_assignments=optimum_assignment)
@@ -221,7 +222,8 @@ class MMKPScheduler(Scheduler):
             GPU_ID_to_task_assignments = assignments.GPU_ID_to_task_assignments
             assigned_jobs = set(assignments.job_ID_to_task_assignments.keys())
             unassigned_jobs = [job_ID for job_ID in all_job_IDs if job_ID not in assigned_jobs]
-            assignments = RRScheduler.assign_jobs(self.strict,
+            assignments = RRScheduler.assign_jobs(self.cluster.cluster_config,
+                                                  self.strict,
                                                   self.data_source,
                                                   unassigned_jobs,
                                                   self.cluster.cluster_config.GPU_IDs,

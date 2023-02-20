@@ -14,7 +14,7 @@ from itertools import count
 class Cluster:
     def __init__(self, cluster_config: ClusterConfig):
         self.cluster_config: ClusterConfig = cluster_config
-        self.assignments: Assignments = Assignments(cluster=self)
+        self.assignments: Assignments = Assignments(cluster_config=self.cluster_config)
         self.jobs: Dict[str, Job] = dict()
         self.done_jobs: Dict[str, Job] = dict()
 
@@ -57,6 +57,16 @@ class Cluster:
             total_real_mem += real_mem
         return total_real_mem
 
+    def running_status(self, data_source: DataSource) -> Dict:
+        undone_jobs = self.jobs
+        running_job_IDs, dist_jobs, spread_jobs = self.assignments.deployed_jobs(data_source)
+        return {
+            "running_jobs": len(running_job_IDs),
+            "dist_jobs": len(dist_jobs),
+            "spread_jobs": len(spread_jobs),
+            "waiting_jobs": len(undone_jobs) - len(running_job_IDs),
+            "done_jobs": len(self.done_jobs)
+        }
 
 class TaskAssignment:
     def __init__(self, GPU_ID: str, GPU_type: GPUType, task: Task, comp_req: int, memory: int,
@@ -79,8 +89,8 @@ class TaskAssignment:
 
 
 class Assignments:
-    def __init__(self, cluster: Cluster, GPU_type_to_task_assignments: Optional[Dict[GPUType, Dict[str, Set[TaskAssignment]]]] = None):
-        self.cluster: Cluster = cluster
+    def __init__(self, cluster_config: ClusterConfig, GPU_type_to_task_assignments: Optional[Dict[GPUType, Dict[str, Set[TaskAssignment]]]] = None):
+        self.cluster_config: ClusterConfig = cluster_config
         if GPU_type_to_task_assignments is None:
             GPU_type_to_task_assignments = dict()
         self.GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = GPU_type_to_task_assignments
@@ -129,6 +139,7 @@ class Assignments:
 
     @classmethod
     def from_solver_assigment(cls,
+                              cluster_config: ClusterConfig,
                               GPU_ID_to_GPU_type: Dict[str, GPUType],
                               GPU_type_to_task_comp_mem_requirements: Dict[
                                   GPUType, Dict[str, Tuple[int, int]]],
@@ -147,10 +158,11 @@ class Assignments:
                                                  comp_req=comp, memory=mem)
                 assert task_assignment not in task_assignments
                 task_assignments.add(task_assignment)
-        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster_config=cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     @classmethod
     def from_GPU_ID_to_task_assignments(cls,
+                                        cluster_config: ClusterConfig,
                                         GPU_ID_to_GPU_type: Dict[str, GPUType],
                                         GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> 'Assignments':
         GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(
@@ -160,10 +172,11 @@ class Assignments:
             for task_assignment in task_assignments:
                 job_ID = task_assignment.task.job_ID
                 GPU_type_to_task_assignments[GPU_type][job_ID].add(task_assignment)
-        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster_config=cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     @classmethod
     def from_job_ID_to_task_assignments(cls,
+                                        cluster_config: ClusterConfig,
                                         job_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> 'Assignments':
         GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(
             lambda: defaultdict(set))
@@ -172,7 +185,7 @@ class Assignments:
                 GPU_type = task_assignment.GPU_type
                 job_ID = task_assignment.task.job_ID
                 GPU_type_to_task_assignments[GPU_type][job_ID].add(task_assignment)
-        return Assignments(GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster_config=cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     def job_ID_to_GPU_IDs(self) -> Dict[str, Set[str]]:
         d: Dict[str, Set[str]] = defaultdict(set)
@@ -265,7 +278,7 @@ class Assignments:
         for job_ID, task_assignments in job_ID_to_task_assignments.items():
             GPU_type = job_ID_to_GPU_type[job_ID]
             GPU_type_to_task_assignments[GPU_type][job_ID] = task_assignments
-        return Assignments(cluster=self.cluster, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster_config=self.cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     def get_job_over_supply(self) -> Tuple[Dict[str, int], int]:
         job_over_supply: Dict[str, int] = dict()
@@ -344,7 +357,7 @@ class Assignments:
         assert len(comp_req) == 1
         comp_req = next(iter(comp_req))
         GPU_type = {task_assignment.GPU_type for task_assignment in task_assignments}
-        GPU_ID_to_node_id = self.cluster.cluster_config.GPU_ID_to_node_id
+        GPU_ID_to_node_id = self.cluster_config.GPU_ID_to_node_id
 
         cross_node = len({GPU_ID_to_node_id[task_assignment.GPU_ID] for task_assignment in task_assignments}) > 1
         assert len(GPU_type) == 1
@@ -359,14 +372,6 @@ class Assignments:
             cross_node=cross_node,
             comp_req=comp_req,
         )
-
-    def running_status(self, data_source: DataSource) -> Dict:
-        job_IDs, dist_jobs, spread_jobs = self.deployed_jobs(data_source)
-        return {
-            "running_jobs": len(job_IDs),
-            "dist_jobs": len(dist_jobs),
-            "spread_jobs": len(spread_jobs)
-        }
 
     def deployed_jobs(self, data_source: DataSource) -> Tuple[Set[str], Set[str], Set[str]]:
         job_IDs = set(self.job_ID_to_task_assignments.keys())
@@ -385,7 +390,7 @@ class Assignments:
         job_ID_to_task_assignments = deepcopy(self.job_ID_to_task_assignments)
         for job_ID in job_IDs:
             job_ID_to_task_assignments.pop(job_ID)
-        return Assignments.from_job_ID_to_task_assignments(job_ID_to_task_assignments=job_ID_to_task_assignments)
+        return Assignments.from_job_ID_to_task_assignments(cluster_config=self.cluster_config, job_ID_to_task_assignments=job_ID_to_task_assignments)
 
     def merge(self, other: 'Assignments') -> 'Assignments':
         GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(lambda :defaultdict(set))
@@ -400,10 +405,10 @@ class Assignments:
                         memory=task_assignment.memory) for task_assignment in task_assignments}
         add(self.GPU_type_to_task_assignments)
         add(other.GPU_type_to_task_assignments)
-        return Assignments(cluster=self.cluster, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
+        return Assignments(cluster_config=self.cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
     def clone(self) -> 'Assignments':
-        return self.merge(Assignments(self.cluster))
+        return self.merge(Assignments(cluster_config=self.cluster_config))
 
     def statistics(self, preemptive: bool, now: int, cluster: Cluster, data_source: DataSource) -> Dict:
         job_over_supply, total_over_supply = self.get_job_over_supply()

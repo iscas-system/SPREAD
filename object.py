@@ -137,9 +137,10 @@ class JobSpec:
 
 
 class Job:
-    def __init__(self, job_ID: str, remaining_iterations: float, start_time: Optional[int]=None, completion_time: Optional[int]=None):
+    def __init__(self, job_ID: str, submit_time: int, remaining_iterations: float, start_time: Optional[int]=None, completion_time: Optional[int]=None):
         self.job_ID: str = job_ID
         self.remaining_iterations: float = remaining_iterations
+        self.submit_time: int = submit_time
         self.start_time: Optional[int] = start_time
         self.completion_time: Optional[int] = completion_time
 
@@ -192,9 +193,9 @@ class GPU:
         return f"GPU[ID={self.idx}, node_id={self.node_id}]"
 
 class NodeType:
-    def __init__(self, node_type_name: str, GPUs: Dict[str, int]):
+    def __init__(self, node_type_name: str, GPUs: Dict[GPUType, int]):
         self.node_type_name: str = node_type_name
-        self.GPUs: Dict[str, int] = GPUs
+        self.GPUs: Dict[GPUType, int] = GPUs
         self.GPU_types = set(GPUs.keys())
 
 class Node:

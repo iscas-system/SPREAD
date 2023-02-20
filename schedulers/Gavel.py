@@ -1,14 +1,12 @@
 from collections import defaultdict
-from typing import Tuple, Optional, Set, Dict, List, Any
+from collections import namedtuple
+from typing import Tuple, Optional, Set, List, Any
 
 import numpy as np
 
 from cluster import TaskAssignment, Assignments
-from data_source import DataSource
 from object import CompCapacity, GPUType, Task, Job
 from scheduler import Scheduler
-from schedulers.sorter import Sorter
-from collections import namedtuple
 
 
 class GavelScheduler(Scheduler):
@@ -16,7 +14,8 @@ class GavelScheduler(Scheduler):
         self.strict = self.config.get("strict", True)
         self.GPU_type = GPUType.RTX_2080Ti
 
-    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
+        Assignments, Optional[Any]]:
         GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive)
 
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
@@ -28,7 +27,8 @@ class GavelScheduler(Scheduler):
             for job_ID in job_IDs:
                 if job_ID in assigned_job_IDs:
                     continue
-                GPU_ID_to_remain_comp_mem = self.GPU_remain_comp_mem(GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+                GPU_ID_to_remain_comp_mem = self.GPU_remain_comp_mem(
+                    GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
                 job_spec = self.data_source.get_job_spec(job_ID)
                 remain_GPU_ID_comp_mem_list: List[GPU_ID_comp_mem_type] = list()
                 for GPU_ID in self.cluster.GPU_IDs:
@@ -86,7 +86,8 @@ class GavelScheduler(Scheduler):
                                                  memory=task_mem)
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
 
-        assignments = Assignments.from_GPU_ID_to_task_assignments(GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
+        assignments = Assignments.from_GPU_ID_to_task_assignments(cluster_config=self.cluster.cluster_config,
+                                                                  GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
                                                                   GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

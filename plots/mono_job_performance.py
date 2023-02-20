@@ -1,3 +1,5 @@
+import math
+import numpy as np
 from collections import defaultdict
 from typing import Tuple, Dict
 
@@ -8,12 +10,13 @@ grid_plot_font = 24
 grid_plot_row = 2
 grid_plot_col = 4
 grid_plot_width = 32
-grid_plot_height = 7
+# grid_plot_height = 7
+grid_plot_height = 11
 grid_plot_legend_pot = (0.01, 0.897)
 grid_plot_top = 0.78
 
 
-def plot_mono_job_performance(ax, model_name: ModelName,
+def plot_mono_job_performance_bs(ax, model_name: ModelName,
                               exec_infos: List[MonoJobExecInfo],
                               batch_sizes: List[int]):
     marker_legend_handles = list()
@@ -81,6 +84,108 @@ def plot_mono_job_performance(ax, model_name: ModelName,
     ax.set_title(f'{model_name.name}')
     ax.set_ylabel('Performance')
     return marker_legend_handles + color_legend_handles
+
+def plot_mono_job_performance(ax, model_name: ModelName,
+                              exec_infos: List[MonoJobExecInfo],
+                              batch_sizes: List[int]):
+    batch_sizes = [64]
+    style_specs = { # sub_job_count to cross_node to (label, line_style, marker)
+        1: {
+            False: ("1 sub-job", "solid", "o", colors[2]),
+        },
+        2: {
+            True: ("2 sub-jobs (CN)", "--", "^", colors[3]),
+            False: ("2 sub-jobs (IN)", "solid", "^", colors[3])
+        },
+        4: {
+            True: ("4 sub-jobs (CN)", "--", "*", colors[4]),
+            False: ("4 sub-jobs (IN)", "solid", "*", colors[4])
+        }
+    }
+    marker_legend_handles = list()
+    for sub_job_count in [1, 2, 4]:
+        cross_node_to_styles = style_specs[sub_job_count]
+        for cross_node in [False, True]:
+            if cross_node not in cross_node_to_styles:
+                continue
+            styles = cross_node_to_styles[cross_node]
+            label, line_style, marker, color = styles
+
+            marker_legend_handle = mlines.Line2D([], [],
+                                                 color=color,
+                                                 marker=marker,
+                                                 linestyle=line_style,
+                                                 label=f"{label}")
+            marker_legend_handles.append(marker_legend_handle)
+    def plot_spread(sub_job_count: int, cross_node: bool, maximum_performance_in_all: Optional[float]=None, return_max_performance: bool=False):
+        batch_size_to_performance = dict()
+        gpu_type = GPUType.RTX_2080Ti
+        ds = get_data_source()
+        for i, batch_size in enumerate(batch_sizes):
+            iteration_intervals = list()
+            for comp in range(10, 110, 10):
+                iter_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                              worker_count=sub_job_count, cross_node=cross_node, comp_req=to_normalized_comp(comp))
+                iteration_intervals.append(iter_time)
+            iteration_intervals = np.array(iteration_intervals, dtype=float)
+            iteration_intervals /= 1e9
+            # normalized_performances = np.min(iteration_intervals) / iteration_intervals
+            normalized_performances = 1 / iteration_intervals
+            batch_size_to_performance[batch_size] = normalized_performances
+
+        maximum_performance = 0
+        for performances in batch_size_to_performance.values():
+            maximum_performance = max(max(performances), maximum_performance)
+
+        if return_max_performance:
+            return maximum_performance
+
+        assert maximum_performance_in_all is not None
+        for batch_size in batch_sizes:
+            x_range = np.arange(10, 110, step=10)
+            # normalized_performances = batch_size_to_performance[batch_size] / np.max(batch_size_to_performance[batch_size])
+            normalized_performances = batch_size_to_performance[batch_size] / maximum_performance_in_all
+            label_, line_style_, marker_, color_ = style_specs[sub_job_count][cross_node]
+            ax.plot(x_range, normalized_performances,
+                    marker=marker_,
+                    linestyle=line_style_,
+                    linewidth='1',
+                    color=color_)
+
+    p1 = plot_spread(1, False, return_max_performance=True)
+    p2 = plot_spread(2, False, return_max_performance=True)
+    p3 = plot_spread(2, True, return_max_performance=True)
+    p4 = plot_spread(4, False, return_max_performance=True)
+    p5 = plot_spread(4, True, return_max_performance=True)
+    maximum_performance = np.max([p1, p2, p3, p4, p5])
+    plot_spread(1, False, maximum_performance_in_all=maximum_performance)
+    plot_spread(2, False, maximum_performance_in_all=maximum_performance)
+    plot_spread(2, True, maximum_performance_in_all=maximum_performance)
+    plot_spread(4, False, maximum_performance_in_all=maximum_performance)
+    plot_spread(4, True, maximum_performance_in_all=maximum_performance)
+
+
+    batch_size_legend_handles = list()
+    # for i, batch_size in enumerate([16, 32, 64, 128, 256, 512]):
+    #     handle = mlines.Line2D([], [],
+    #                            marker="s",
+    #                            linestyle="None",
+    #                            label=rf"bs. {batch_size}",
+    #                            color=batch_size_color(batch_size))
+    #     batch_size_legend_handles.append(handle)
+    legend_handles = batch_size_legend_handles + marker_legend_handles
+
+    inside_ticks(ax=ax, x=True, y=True)
+    ax.set_yticks([0, 0.5, 1])
+    ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(True)
+
+    # inside_ticks(ax)
+    ax.set_xlabel(f'Comp. Resource (%)')
+    ax.set_title(f'{model_name.name}')
+    ax.set_ylabel('Performance')
+    return legend_handles
 
 
 def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
@@ -185,7 +290,8 @@ def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJob
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 24})
     col = grid_plot_col
-    row = grid_plot_row
+    # row = grid_plot_row
+    row = math.ceil(len(model_sort) / col)
     fig, axes = plt.subplots(row, col, figsize=(32, 8))
 
     handles = None
@@ -450,7 +556,8 @@ def plot_mono_jobs_memory_spread_compare(mono_job_exec_infos: Dict[ModelName, Li
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': grid_plot_font})
     col = grid_plot_col
-    row = grid_plot_row
+    # row = grid_plot_row
+    row = math.ceil(len(model_sort) / col)
     fig, axes = plt.subplots(row, col, figsize=(grid_plot_width, grid_plot_height))
 
     handles = None
@@ -652,7 +759,8 @@ def plot_mono_job_spread_performance(ax,
                                      model_name: ModelName,
                                      exec_infos: List[MonoJobExecInfo],
                                      gpu_type: GPUType,
-                                     batch_sizes: List[int]
+                                     batch_sizes: List[int],
+                                     original_comp: Optional[int] = None,
                                      ):
     class BarMeta:
         def __init__(self, name: str, original: bool, worker_count: int, cross_node: bool, color_idx: int):
@@ -674,7 +782,11 @@ def plot_mono_job_spread_performance(ax,
     ds = get_data_source()
 
     def get_bar_meta_comp(bar_meta: BarMeta, batch_size: int) -> Optional[int]:
+        nonlocal original_comp
         if bar_meta.original:
+            if original_comp != None:
+                original_bs_to_max_perf_comp[batch_size] = original_comp
+                return original_comp
             if batch_size in original_bs_to_max_perf_comp:
                 return original_bs_to_max_perf_comp[batch_size]
             original_comp_iter_max = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size,
@@ -697,13 +809,13 @@ def plot_mono_job_spread_performance(ax,
                 if neighbor_k < k:
                     target_original_comp_req = comp_req
                     break
-            original_comp = to_real_comp(target_original_comp_req)
-            original_bs_to_max_perf_comp[batch_size] = original_comp
-            return original_comp
+            original_comp_ = to_real_comp(target_original_comp_req)
+            original_bs_to_max_perf_comp[batch_size] = original_comp_
+            return original_comp_
 
-        original_comp = original_bs_to_max_perf_comp[batch_size]
+        original_comp_ = original_bs_to_max_perf_comp[batch_size]
 
-        original_comp_req = to_normalized_comp(original_comp)
+        original_comp_req = to_normalized_comp(original_comp_)
         base_comp_req = original_comp_req // bar_meta.worker_count
         target_comp_req = base_comp_req
         original_iteration_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
@@ -780,11 +892,13 @@ def plot_mono_job_spread_performance(ax,
 
 def plot_mono_jobs_dist_performance_spread(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
                                            show_model_batch_sizes: Dict[ModelName, List[int]],
-                                           model_sort: List[ModelName]):
+                                           model_sort: List[ModelName],
+                                           original_comp: Optional[int]):
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': grid_plot_font})
     col = grid_plot_col
-    row = grid_plot_row
+    # row = grid_plot_row
+    row = math.ceil(len(model_sort) / col)
     fig, axes = plt.subplots(row, col, figsize=(grid_plot_width, grid_plot_height))
 
     handles = None
@@ -793,14 +907,14 @@ def plot_mono_jobs_dist_performance_spread(mono_job_exec_infos: Dict[ModelName, 
         batch_sizes = show_model_batch_sizes[model_name]
         exec_infos = mono_job_exec_infos[model_name]
         new_handles = plot_mono_job_spread_performance(axes[i // col, i % col], model_name, exec_infos, gpu_type,
-                                                       batch_sizes=batch_sizes)
+                                                       batch_sizes=batch_sizes, original_comp=original_comp)
         if handles is None:
             handles = new_handles
     fig.tight_layout()
     lgd = fig.legend(handles=handles, loc=grid_plot_legend_pot, ncol=len(handles))
     lgd.get_frame().set_alpha(None)
     fig.subplots_adjust(top=grid_plot_top)
-    fig.savefig(output_path(f"mono_job_dist_performance_spread.pdf"), dpi=400, format='pdf',
+    fig.savefig(output_path(f"mono_job_dist_performance_spread_{original_comp}.pdf"), dpi=400, format='pdf',
                 bbox_inches='tight')
     mpl.rcParams.update({'font.size': original_fontsize})
 
@@ -841,29 +955,38 @@ def main():
         ModelName.MobileNetV2,
         ModelName.EfficientNet,
         ModelName.GhostNet,
-        ModelName.ShuffleNet,
-        ModelName.HarDNet,
-        ModelName.MEALV2
+        # ModelName.ShuffleNet,
+        # ModelName.HarDNet,
+        # ModelName.MEALV2,
+        ModelName.InceptionV3,
+        ModelName.ResNet18,
+        ModelName.ResNet50,
     ]
     show_model_batch_sizes = {
-        ModelName.SqueezeNet: [32, 64, 128, 256],
-        ModelName.YoloV5S: [16, 32, 64, 128],
-        ModelName.MobileNetV2: [16, 32, 64, 128],
+        ModelName.SqueezeNet: [64, 128, 256],
+        ModelName.YoloV5S: [32, 64, 128],
+        ModelName.MobileNetV2: [16, 32, 64],
         ModelName.EfficientNet: [16, 32, 64],
-        ModelName.GhostNet: [32, 64, 128, 256],
-        ModelName.ShuffleNet: [32, 64, 128, 256],
-        ModelName.HarDNet: [32, 64, 128, 256],
-        ModelName.MEALV2: [64, 128, 256, 512],
+        ModelName.GhostNet: [64, 128, 256],
+        ModelName.ShuffleNet: [64, 128, 256],
+        ModelName.HarDNet: [64, 128, 256],
+        ModelName.MEALV2: [128, 256, 512],
+        ModelName.InceptionV3: [16, 32, 64],
+        ModelName.ResNet18: [32, 64, 128],
+        ModelName.ResNet50: [16, 32, 64],
     }
 
-    # plot_mono_jobs_memory_spread_compare(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes,
-    #                                      model_sort=model_sort, absolute=True)
+    plot_mono_jobs_memory_spread_compare(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes,
+                                         model_sort=model_sort, absolute=True)
     #
-    # plot_mono_jobs_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes,
-    #                            model_sort=model_sort)
+    plot_mono_jobs_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes,
+                               model_sort=model_sort)
 
-    plot_mono_jobs_dist_performance_spread(data_source.mono_job_data,
-                                           show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort)
+    # plot_mono_jobs_dist_performance_spread(data_source.mono_job_data,
+    #                                        show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort, original_comp=60)
+    # plot_mono_jobs_dist_performance_spread(data_source.mono_job_data,
+    #                                        show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort,
+    #                                        original_comp=60)
     # plot_mono_jobs_dist_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort, comps=(100, 50, 60, 25, 30))
     # plot_mono_jobs_dist_performance(data_source.mono_job_data, show_model_batch_sizes=show_model_batch_sizes, model_sort=model_sort, comps=(80, 40, 50, 20, 25))
     # plot_mono_jobs_dist_performance(mono_job_exec_infos, comps=(60, 30, 40, 15, 20))

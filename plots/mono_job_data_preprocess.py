@@ -171,7 +171,7 @@ def batch_size_level_color(batch_size_level: int) -> str:
 #             "avg_stabled_utilization": self.avg_stabled_utilization
 #         }
 
-def get_data_source(data_source_name: str="data_source_ali", enabled_GPU_types=None):
+def get_data_source(data_source_name: str="data_source_ali_static", enabled_GPU_types=None):
     if enabled_GPU_types is None:
         enabled_GPU_types = {GPUType.RTX_2080Ti}
     c = get_config("../configs/MMKP_config.json")
@@ -182,10 +182,10 @@ def get_data_source(data_source_name: str="data_source_ali", enabled_GPU_types=N
 
 def do_test():
     c = get_config("../configs/MMKP_config.json")
-    d = DataSource(data_source_config=c.data_source_configs["data_source_ali_fix_new"],
+    d = DataSource(data_source_config=c.data_source_configs["data_source_ali_static"],
                    enabled_GPU_types={GPUType.RTX_2080Ti})
     print(d.job_specs[0].total_iterations)
-    e = DataSource(data_source_config=c.data_source_configs["data_source_phi_uni"],
+    e = DataSource(data_source_config=c.data_source_configs["data_source_phi_static"],
                    enabled_GPU_types={GPUType.RTX_2080Ti})
     print(e.job_specs[0].total_iterations)
     infos = MonoJobExecInfoLoader.extract(e.mono_job_data[ModelName.MEALV2], train_or_inference=TrainOrInference.train,

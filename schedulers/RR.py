@@ -3,6 +3,7 @@ from typing import Tuple, Optional, Set, Dict, List, Any
 
 import numpy as np
 
+import config
 from cluster import TaskAssignment, Assignments
 from data_source import DataSource
 from object import CompCapacity, GPUType, Task, Job
@@ -15,7 +16,8 @@ class RRScheduler(Scheduler):
         self.strict = self.config.get("strict", True)
         self.GPU_type = GPUType.RTX_2080Ti
 
-    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
+        Assignments, Optional[Any]]:
         GPU_IDs = sorted(self.cluster.GPU_IDs)
         if not preemptive:
             GPU_ID_to_task_assignments = self.cluster.assignments.clone().GPU_ID_to_task_assignments
@@ -31,19 +33,22 @@ class RRScheduler(Scheduler):
         job_IDs = Sorter.sort(jobs=[self.cluster.jobs[job_ID] for job_ID in job_IDs], data_source=self.data_source,
                               priority_type=self.priority_type)
         job_IDs = job_IDs[:100]
-        assignments = RRScheduler.assign_jobs(self.strict, self.data_source, job_IDs, GPU_IDs, self.GPU_type, GPU_ID_to_task_assignments)
+        assignments = RRScheduler.assign_jobs(self.cluster.cluster_config, self.strict, self.data_source, job_IDs,
+                                              GPU_IDs, self.GPU_type, GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
 
         return assignments, None
 
     @staticmethod
-    def assign_jobs(strict: bool,
+    def assign_jobs(cluster_config: config.ClusterConfig,
+                    strict: bool,
                     data_source: DataSource,
                     job_IDs: List[str],
                     GPU_IDs: List[str],
                     GPU_type: GPUType,
                     GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]):
-        most_remain_GPU_ID = RRScheduler.most_remain_GPU_ID(GPU_IDs=GPU_IDs, GPU_type=GPU_type, GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+        most_remain_GPU_ID = RRScheduler.most_remain_GPU_ID(GPU_IDs=GPU_IDs, GPU_type=GPU_type,
+                                                            GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         curr_GPU_ID_idx = GPU_IDs.index(most_remain_GPU_ID) - 1
 
         if strict:
@@ -57,12 +62,15 @@ class RRScheduler(Scheduler):
                                                   curr_GPU_ID_idx=curr_GPU_ID_idx,
                                                   GPU_IDs=GPU_IDs,
                                                   GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
-        assignments = Assignments.from_GPU_ID_to_task_assignments(GPU_ID_to_GPU_type=defaultdict(lambda :GPU_type),
-                                                                  GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+        assignments = Assignments.from_GPU_ID_to_task_assignments(
+            cluster_config=cluster_config,
+            GPU_ID_to_GPU_type=defaultdict(lambda: GPU_type),
+            GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         return assignments
 
     @staticmethod
-    def most_remain_GPU_ID(GPU_IDs: List[str], GPU_type: GPUType, GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> str:
+    def most_remain_GPU_ID(GPU_IDs: List[str], GPU_type: GPUType,
+                           GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> str:
         most_remain_resource = 0
         most_remain_GPU_ID = None
         for GPU_ID in GPU_IDs:

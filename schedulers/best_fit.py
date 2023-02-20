@@ -1,12 +1,11 @@
 from collections import defaultdict
+from collections import namedtuple
 from typing import Tuple, Optional, Set, Dict, List, Any
 
 from cluster import TaskAssignment, Assignments
 from object import CompCapacity, GPUType, Task, PriorityType, Job
 from scheduler import Scheduler
 from schedulers.sorter import Sorter
-import numpy as np
-from collections import namedtuple
 
 
 class BestFitScheduler(Scheduler):
@@ -14,10 +13,12 @@ class BestFitScheduler(Scheduler):
         self.GPU_type = GPUType.RTX_2080Ti
         ...
 
-    def GPU_remain_comp_mem(self, GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Dict[str, Tuple[int, int]]:
+    def GPU_remain_comp_mem(self, GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Dict[
+        str, Tuple[int, int]]:
         GPU_ID_to_remain_comp_mem: Dict[str, Tuple[int, int]] = dict()
         for GPU_ID in self.cluster.GPU_IDs:
-            GPU_ID_to_remain_comp_mem[GPU_ID] = CompCapacity, GPUType.normalized_memory(self.cluster.GPU_ID_to_GPU_type[GPU_ID])
+            GPU_ID_to_remain_comp_mem[GPU_ID] = CompCapacity, GPUType.normalized_memory(
+                self.cluster.GPU_ID_to_GPU_type[GPU_ID])
         for GPU_ID in self.cluster.GPU_IDs:
             GPU_mem = GPUType.normalized_memory(
                 GPU_type=self.cluster.GPU_ID_to_GPU_type[GPU_ID])
@@ -32,9 +33,11 @@ class BestFitScheduler(Scheduler):
             GPU_ID_to_remain_comp_mem[GPU_ID] = remain_comp, remain_mem
         return GPU_ID_to_remain_comp_mem
 
-    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
+        Assignments, Optional[Any]]:
         GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive)
-        job_IDs = Sorter.sort(jobs=[self.cluster.get_job(job_ID) for job_ID in job_IDs], data_source=self.data_source, priority_type=PriorityType.FCFS)
+        job_IDs = Sorter.sort(jobs=[self.cluster.get_job(job_ID) for job_ID in job_IDs], data_source=self.data_source,
+                              priority_type=PriorityType.FCFS)
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
         job_IDs = job_IDs[:300]
@@ -80,7 +83,9 @@ class BestFitScheduler(Scheduler):
                                                  comp_req=job_spec.plan_comp,
                                                  memory=task_mem)
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
-        assignments = Assignments.from_GPU_ID_to_task_assignments(GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
-                                                                  GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+        assignments = Assignments.from_GPU_ID_to_task_assignments(
+            self.cluster.cluster_config,
+            GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
+            GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

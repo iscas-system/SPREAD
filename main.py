@@ -13,7 +13,7 @@ def main():
     parser.add_argument('--config-path',
                         type=str,
                         required=False,
-                        default=str(pathlib.Path(__file__).parent / "configs" / "test_config.json"),
+                        default=str(pathlib.Path(__file__).parent / "configs" / "MMKP_config.json"),
                         help="config path")
     args = parser.parse_args()
     assert os.path.exists(args.config_path), "config path not exists"

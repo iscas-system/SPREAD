@@ -1,12 +1,11 @@
 from collections import defaultdict
-from typing import Tuple, Optional, Set, Dict, List, Any
+from collections import namedtuple
+from typing import Tuple, Optional, Set, List, Any
 
 from cluster import TaskAssignment, Assignments
-from object import CompCapacity, GPUType, Task, PriorityType, Job
+from object import GPUType, Task, PriorityType, Job
 from scheduler import Scheduler
 from schedulers.sorter import Sorter
-import numpy as np
-from collections import namedtuple
 
 
 class KubeShareScheduler(Scheduler):
@@ -14,9 +13,11 @@ class KubeShareScheduler(Scheduler):
         self.GPU_type = GPUType.RTX_2080Ti
         ...
 
-    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
+    def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
+        Assignments, Optional[Any]]:
         GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive)
-        job_IDs = Sorter.sort(jobs=[self.cluster.get_job(job_ID) for job_ID in job_IDs], data_source=self.data_source, priority_type=PriorityType.FCFS)
+        job_IDs = Sorter.sort(jobs=[self.cluster.get_job(job_ID) for job_ID in job_IDs], data_source=self.data_source,
+                              priority_type=PriorityType.FCFS)
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         job_IDs = job_IDs[:400]
         for job_ID in job_IDs:
@@ -48,14 +49,16 @@ class KubeShareScheduler(Scheduler):
                     GPU_ID_comp_mem = slice_GPU_ID_comp_mem[task_idx]
                     GPU_ID, _, _ = GPU_ID_comp_mem
                     task_assignment = TaskAssignment(GPU_ID=GPU_ID,
-                                   GPU_type=self.GPU_type,
-                                   task=Task(job_ID=job_ID, task_idx=task_idx),
-                                   comp_req=job_spec.plan_comp,
-                                   memory=task_mem)
+                                                     GPU_type=self.GPU_type,
+                                                     task=Task(job_ID=job_ID, task_idx=task_idx),
+                                                     comp_req=job_spec.plan_comp,
+                                                     memory=task_mem)
                     GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
                 if resource_enough:
                     break
-        assignments = Assignments.from_GPU_ID_to_task_assignments(GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
-                                                                  GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+        assignments = Assignments.from_GPU_ID_to_task_assignments(
+            cluster_config=self.cluster.cluster_config,
+            GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
+            GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

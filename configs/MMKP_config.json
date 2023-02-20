@@ -7,7 +7,7 @@
     "repeat": 1
   },
   "cluster_configs": {
-    "cluster_48": {
+    "cluster_64": {
       "node_type": {
         "8GPU_node": {
           "RTX_2080Ti": 8
@@ -69,33 +69,6 @@
         0
       ]
     },
-    "HarDNet": {
-      "batch_sizes": [
-        16,
-        32,
-        64,
-        128,
-        256
-      ],
-      "preemptive_overhead": [
-        0,
-        0
-      ]
-    },
-    "MEALV2": {
-      "batch_sizes": [
-        16,
-        32,
-        64,
-        128,
-        256,
-        512
-      ],
-      "preemptive_overhead": [
-        0,
-        0
-      ]
-    },
     "EfficientNet": {
       "batch_sizes": [
         16,
@@ -130,91 +103,98 @@
         0,
         0
       ]
+    },
+    "InceptionV3": {
+      "batch_sizes": [
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "ResNet18": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "ResNet50": {
+      "batch_sizes": [
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
     }
   },
   "data_source_configs": {
-    "data_source_ali": {
+    "data_source_ali_static": {
       "data_range": [
         100,
         2000
       ],
       "init_job_data_seed": 1,
       "job_count": 500,
-      "comp_distribution": "ali",
+      "comp_distribution": "all_100",
       "submit_at_beginning": true,
       "submit_table_path": "data/pai_job_submit_table.csv",
       "submit_scale_factor": 1,
       "mono_job_data_path": "data/mono_data_SC"
     },
-    "data_source_ali_fix_new": {
+    "data_source_ali_trace": {
       "data_range": [
         100,
         2000
       ],
       "init_job_data_seed": 1,
       "job_count": 500,
-      "comp_distribution": "ali_fix_new",
-      "submit_at_beginning": true,
+      "comp_distribution": "all_100",
+      "submit_at_beginning": false,
       "submit_table_path": "data/pai_job_submit_table.csv",
       "submit_scale_factor": 1,
       "mono_job_data_path": "data/mono_data_SC"
     },
-    "data_source_ali_uni": {
-      "data_range": [
-        0,
-        2000
-      ],
-      "init_job_data_seed": 2,
-      "job_count": 500,
-      "comp_distribution": "uniform",
-      "submit_at_beginning": true,
-      "submit_table_path": "data/pai_job_submit_table.csv",
-      "submit_scale_factor": 1,
-      "mono_job_data_path": "data/mono_data_SC"
-    },
-    "data_source_phi": {
+    "data_source_phi_static": {
       "data_range": [
         0,
         2000
       ],
       "init_job_data_seed": 1,
       "job_count": 500,
-      "comp_distribution": "phi",
+      "comp_distribution": "all_100",
       "submit_at_beginning": true,
       "submit_table_path": "data/philly_job_submit_table.csv",
       "submit_scale_factor": 1,
       "mono_job_data_path": "data/mono_data_SC"
     },
-    "data_source_phi_fix_new": {
+    "data_source_phi_trace": {
       "data_range": [
         0,
         2000
       ],
-      "init_job_data_seed": 2,
+      "init_job_data_seed": 1,
       "job_count": 500,
-      "comp_distribution": "ali_fix_new",
-      "submit_at_beginning": true,
-      "submit_table_path": "data/philly_job_submit_table.csv",
-      "submit_scale_factor": 1,
-      "mono_job_data_path": "data/mono_data_SC"
-    },
-    "data_source_phi_uni": {
-      "data_range": [
-        0,
-        2000
-      ],
-      "init_job_data_seed": 2,
-      "job_count": 500,
-      "comp_distribution": "uniform",
-      "submit_at_beginning": true,
+      "comp_distribution": "all_100",
+      "submit_at_beginning": false,
       "submit_table_path": "data/philly_job_submit_table.csv",
       "submit_scale_factor": 1,
       "mono_job_data_path": "data/mono_data_SC"
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_uni",
-    "data_source_phi_fix_new"
+    "data_source_ali_trace"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -301,6 +281,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "MMKP_strict_no_split"
+    "Kubernetes"
   ]
 }

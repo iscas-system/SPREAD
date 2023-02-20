@@ -48,7 +48,7 @@ class Config:
         for cn, c in d["cluster_configs"].items():
             self.cluster_configs[cn] = ClusterConfig(
                 name=cn,
-                node_types=[NodeType(node_type_name=node_type_name, GPUs=GPUs) for node_type_name, GPUs in c["node_type"].items()],
+                node_types=[NodeType(node_type_name=node_type_name, GPUs={GPUType(g): cnt for g, cnt in GPUs.items()}) for node_type_name, GPUs in c["node_type"].items()],
                 node_type_to_count={node_type_name: node_count for node_type_name, node_count in c["nodes"].items()}
             )
         self.enabled_cluster_configs: List[str] = d["enabled_cluster_configs"]
