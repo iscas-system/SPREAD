@@ -95,7 +95,7 @@ def do_MMKP_solve_4(solver_params: SolverParameters4) -> Optional[SolverResult]:
     return solver_result
 
 
-def do_partition_solve_1(solver_params: PartitionSolverParameters) -> Optional[PartitionSolverResult]:
+def do_partition_solve_1(solver_params: PartitionSolverParameters) -> PartitionSolverResult:
     start = time.time_ns()
     solve_raw_res = PartitionSolver.solve(
         GPU_ID_to_node_id=solver_params.GPU_ID_to_node_id,
@@ -103,8 +103,6 @@ def do_partition_solve_1(solver_params: PartitionSolverParameters) -> Optional[P
         strategy=solver_params.strategy
     )
     end = time.time_ns()
-    if solve_raw_res is None:
-        return None
     partition_to_GPU_IDs, GPU_ID_to_partition, partition_profit = solve_raw_res
     solver_result = PartitionSolverResult(solver_parameters=solver_params,
                                           duration=(end - start),
@@ -114,8 +112,7 @@ def do_partition_solve_1(solver_params: PartitionSolverParameters) -> Optional[P
     return solver_result
 
 
-def do_job_distribution_solve_1(solver_params: JobDistributionSolverParameters) -> Optional[
-    JobDistributionSolverResult]:
+def do_job_distribution_solve_1(solver_params: JobDistributionSolverParameters) -> JobDistributionSolverResult:
     start = time.time_ns()
     solve_raw_res = JobDistributionSolver.solve_heuristic(
         partition_to_GPU_IDs=solver_params.partition_to_GPU_IDs,
@@ -126,8 +123,6 @@ def do_job_distribution_solve_1(solver_params: JobDistributionSolverParameters) 
         strategy=solver_params.strategy
     )
     end = time.time_ns()
-    if solve_raw_res is None:
-        return None
     partition_to_jobs = solve_raw_res
     solver_result = JobDistributionSolverResult(solver_parameters=solver_params,
                                                 duration=(end - start),
@@ -141,7 +136,7 @@ class PartitionSolver:
             GPU_ID_to_node_id: Dict[str, str],
             partition_size: int,
             strategy: str = "heuristic"  # "heuristic", "round"
-    ):
+    ) -> Tuple[Dict[str, List[str]], Dict[str, str], int]:
         GPU_IDs_ = sorted(list(GPU_ID_to_node_id.keys()))
         if len(GPU_IDs_) % partition_size != 0:
             virtual_counter = count(0)
@@ -891,7 +886,7 @@ def cal_profit(task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int,
     return total_profit
 
 
-def cal_partition_profit(partition_to_GPU_IDs: Dict[str, List[str]], GPU_ID_to_node_id: Dict[str, str]):
+def cal_partition_profit(partition_to_GPU_IDs: Dict[str, List[str]], GPU_ID_to_node_id: Dict[str, str]) -> int:
     s = 0
     for p, GPU_IDs in partition_to_GPU_IDs.items():
         node_ids = set(GPU_ID_to_node_id[a] for a in GPU_IDs)

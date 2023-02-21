@@ -46,7 +46,7 @@ class Config:
             )
         self.cluster_configs: Dict[str, 'ClusterConfig'] = dict()
         for cn, c in d["cluster_configs"].items():
-            self.cluster_configs[cn] = ClusterConfig(
+            self.cluster_configs[cn] = ClusterConfig.from_node_specs(
                 name=cn,
                 node_types=[NodeType(node_type_name=node_type_name, GPUs={GPUType(g): cnt for g, cnt in GPUs.items()}) for node_type_name, GPUs in c["node_type"].items()],
                 node_type_to_count={node_type_name: node_count for node_type_name, node_count in c["nodes"].items()}
@@ -108,38 +108,59 @@ def get_config(config_path: Optional[str] = None):
 
 
 class ClusterConfig:
-    def __init__(self, name: str, node_types: List[NodeType], node_type_to_count: Dict[str, int]):
-        self.name: str = name
-        self.node_types: Dict[str, NodeType] = {node_type.node_type_name: node_type for node_type in node_types}
+
+    @classmethod
+    def from_node_specs(cls, name: str, node_types: List[NodeType], node_type_to_count: Dict[str, int]) -> 'ClusterConfig':
+        node_types = {node_type.node_type_name: node_type for node_type in node_types}
         nodes = []
         counter = count(0)
         for node_type_name, c in node_type_to_count.items():
             nodes.extend([Node(node_type_name, next(counter)) for _ in range(c)])
-        self.nodes: List[Node] = nodes
-        self.GPU_types: Set[GPUType] = set()
+        nodes = nodes
+        GPU_types: Set[GPUType] = set()
         for nt in node_types:
-            self.GPU_types.update(nt.GPU_types)
+            GPU_types.update(nt.GPU_types)
 
-        self.GPUs: DefaultDict[GPUType, List[GPU]] = defaultdict(list)
+        GPUs = defaultdict(list)
+        GPU_ID_to_node_id = dict()
+        GPU_idx_counter = count(0)
+        for node in nodes:
+            node_type = node_types[node.node_type_name]
+            for GPU_type, c in node_type.GPUs.items():
+                for i in range(c):
+                    GPU_type = GPUType(GPU_type)
+                    g = GPU.from_idx_node_id(GPU_type=GPU_type, idx=next(GPU_idx_counter), node_id=node.node_id)
+                    GPUs[GPU_type].append(g)
+                    GPU_ID_to_node_id[g.GPU_ID] = node.node_id
+        return cls(name=name, GPUs=GPUs, GPU_ID_to_node_id=GPU_ID_to_node_id)
+
+    @classmethod
+    def from_GPU_specs(cls, name: str, GPU_ID_type_node_id: Dict[str, Tuple[GPUType, str]]) -> 'ClusterConfig':
+        GPUs = defaultdict(list)
+        GPU_ID_to_node_id = dict()
+        for GPU_ID, spec in GPU_ID_type_node_id.items():
+            GPU_type, node_id = spec
+            g = GPU(GPU_type=GPU_type, GPU_ID=GPU_ID, node_id=node_id)
+            GPUs[GPU_type].append(g)
+            GPU_ID_to_node_id[GPU_ID] = node_id
+        return cls(name=name, GPUs=GPUs, GPU_ID_to_node_id=GPU_ID_to_node_id)
+
+    def __init__(self, name: str, GPUs: DefaultDict[GPUType, List[GPU]], GPU_ID_to_node_id: Dict[str, str]):
+        self.name: str = name
+        self.GPU_types: Set[GPUType] = set(GPUs.keys())
+
+        self.GPUs: DefaultDict[GPUType, List[GPU]] = GPUs
+        self.GPU_ID_to_node_id: Dict[str, str] = GPU_ID_to_node_id
         self.GPU_IDs: List[str] = list()
         self.GPU_ID_to_GPU: Dict[str, GPU] = dict()
-        self.GPU_ID_to_GPU_type: Dict[str, GPUType] = dict()
-        self.GPU_ID_to_node_id: Dict[str, str] = dict()
-        self.node_id_to_GPU_ID: Dict[str, str] = dict()
-        GPU_idx_counter = count(0)
-        for node in self.nodes:
-            node_type = self.node_types[node.node_type_name]
-            for GPU_type, c in node_type.GPUs.items():
-                GPU_type = GPUType(GPU_type)
-                g = GPU(GPU_type=GPU_type, idx=next(GPU_idx_counter), node_id=node.node_id)
-                self.GPUs[GPU_type].append(g)
+        for _, typed_GPUs in GPUs.items():
+            for g in typed_GPUs:
                 self.GPU_IDs.append(g.GPU_ID)
                 self.GPU_ID_to_GPU[g.GPU_ID] = g
-                self.GPU_ID_to_GPU_type[g.GPU_ID] = g.GPU_type
-                self.GPU_ID_to_node_id[g.GPU_ID] = node.node_id
-                self.node_id_to_GPU_ID[g.node_id] = g.GPU_ID
         self.GPU_IDs.sort()
 
+    def get_GPU(self, GPU_ID) -> GPU:
+        return self.GPU_ID_to_GPU[GPU_ID]
 
 class DataSourceConfig:
     def __init__(self,

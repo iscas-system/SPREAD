@@ -16,13 +16,13 @@
           "RTX_2080Ti": 4
         },
         "2GPU_node": {
-          "RTX_2080Ti": 4
+          "RTX_2080Ti": 2
         }
       },
       "nodes": {
         "8GPU_node": 4,
         "4GPU_node": 6,
-        "2GPU_node": 6
+        "2GPU_node": 4
       }
     }
   },

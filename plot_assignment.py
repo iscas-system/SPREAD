@@ -35,7 +35,7 @@ def do_snapshot_record_plot(session_id: str, iteration_idx: int, is_preemptive_i
         solver_type = snapshot_record_parameters.solver_type
 
     filename = datetime.datetime.now().strftime(
-        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{':04'.format(iteration_idx)}_{np.around(snapshot_record_parameters.profit, decimals=1)}_{is_preemptive_interval}")
+        f"snapshot_record_{snapshot_record_parameters.scheduler_name}_{solver_type}_{'{:04}'.format(iteration_idx)}_{np.around(snapshot_record_parameters.profit, decimals=1)}_{is_preemptive_interval}")
     json_filepath = os.path.join(get_json_dir(session_id), filename + ".json")
     fig_filepath = os.path.join(get_fig_dir(session_id), filename + ".pdf")
     info(f"received record parameters, session_id = {session_id}, saving file to {json_filepath}")

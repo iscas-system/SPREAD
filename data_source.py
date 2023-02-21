@@ -215,9 +215,12 @@ class DataSource:
                 break
             job_ID = f"job_ID_{row['jobID']}"
             submit_time = row["submit_time"] if not self.data_source_config.submit_at_beginning else 0
-            submit_time *= self.data_source_config.submit_scale_factor
+            submit_time_nano = int(1e9 * submit_time) # to nano
+            submit_time_nano *= self.data_source_config.submit_scale_factor
             run_time = row["run_time"]
             run_time = DataSource.run_time_converter(run_time=run_time)
+            run_time_nano = int(run_time * 1e9)
+            del submit_time, run_time
             plan_GPU = row["plan_gpu"]
             if plan_GPU > 100:
                 plan_GPU = 100
@@ -242,18 +245,18 @@ class DataSource:
                 elif batch_size > lower_threshold:
                     batch_sizes_fixed += [batch_size for _ in range(2)]
             batch_size = np.random.choice(batch_sizes_fixed)
-            iteration_throughput = self.iteration_time(model_name,
-                                                       batch_size,
-                                                       GPU_type,
-                                                       worker_count,
-                                                       False,
-                                                       comp_req)
-            total_iterations = int(1e9 * run_time) // iteration_throughput
+            iteration_throughput = self.iteration_time_nano(model_name,
+                                                            batch_size,
+                                                            GPU_type,
+                                                            worker_count,
+                                                            False,
+                                                            comp_req)
+            total_iterations = run_time_nano // iteration_throughput
             job_spec = JobSpec(job_ID=job_ID,
                                model_name=model_name,
                                batch_size=batch_size,
-                               submit_time=submit_time,
-                               run_time=run_time,
+                               submit_time_nano=submit_time_nano,
+                               run_time_nano=run_time_nano,
                                plan_GPU=plan_GPU,
                                total_iterations=total_iterations,
                                worker_count=worker_count
@@ -277,12 +280,12 @@ class DataSource:
         assert len(info) == 1
         return info[0]
 
-    def iteration_time(self, model_name: ModelName,
-                       batch_size: int,
-                       GPU_type: GPUType,
-                       worker_count: int,
-                       cross_node: bool,
-                       comp_req: float):
+    def iteration_time_nano(self, model_name: ModelName,
+                            batch_size: int,
+                            GPU_type: GPUType,
+                            worker_count: int,
+                            cross_node: bool,
+                            comp_req: float) -> Optional[int]:
         batch_size = batch_size // worker_count
         computation_proportion = int(comp_req * (100 // CompCapacity))
         info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
@@ -342,7 +345,7 @@ class DataSource:
         k = iteration_interval_diff / comp_diff
         iteration_interval = infos[
                                  less_idx].avg_stabled_iteration_interval + k * (computation_proportion - less_comp)
-        return iteration_interval * factor
+        return int(iteration_interval * factor)
 
     def computation_utilization(self, model_name: ModelName,
                                 batch_size: int,
@@ -406,7 +409,7 @@ class DataSource:
                            worker_count: int,
                            cross_node: bool) -> float:
         job_spec = self.job_specs_dict[job_ID]
-        iteration_time = self.iteration_time(
+        iteration_time = self.iteration_time_nano(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
@@ -438,20 +441,20 @@ class DataSource:
             return d["comp"]
 
         comp_end = CompCapacity + 1
-        before_last_iter = self.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
-                                               comp_req=1,
-                                               worker_count=worker_count, cross_node=cross_node)
-        max_iter = self.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
-                                               comp_req=CompCapacity,
-                                               worker_count=worker_count, cross_node=cross_node)
+        before_last_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
+                                                    comp_req=1,
+                                                    worker_count=worker_count, cross_node=cross_node)
+        max_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
+                                            comp_req=CompCapacity,
+                                            worker_count=worker_count, cross_node=cross_node)
         maximized_perf_comp = 1
         for comp in range(2, comp_end, 1):
             # last_iter = self.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
             #                                 comp_req=comp - 1,
             #                                 worker_count=worker_count, cross_node=cross_node)
-            curr_iter = self.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
-                                            comp_req=comp,
-                                            worker_count=worker_count, cross_node=cross_node)
+            curr_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
+                                                 comp_req=comp,
+                                                 worker_count=worker_count, cross_node=cross_node)
             if abs(curr_iter - max_iter) / max_iter < 0.05:
                 maximized_perf_comp = comp
                 break
@@ -462,10 +465,10 @@ class DataSource:
         if maximized_perf_comp is None:
             maximized_perf_comp = CompCapacity
 
-        maximized_perf_iteration_count = self.iteration_time(model_name=model_name, batch_size=batch_size,
-                                                             GPU_type=GPU_type,
-                                                             comp_req=maximized_perf_comp,
-                                                             worker_count=worker_count, cross_node=cross_node)
+        maximized_perf_iteration_count = self.iteration_time_nano(model_name=model_name, batch_size=batch_size,
+                                                                  GPU_type=GPU_type,
+                                                                  comp_req=maximized_perf_comp,
+                                                                  worker_count=worker_count, cross_node=cross_node)
         new_record = pd.DataFrame([{
             "model_name": model_name_str,
             "GPU_type": GPU_type,
@@ -603,8 +606,8 @@ class DataSource:
 
     @staticmethod
     def run_time_converter(run_time: int):
-        while run_time < 30 * 60:
-            run_time *= 2
+        # while run_time < 30 * 60:
+        #     run_time *= 2
         return run_time
 
     @staticmethod

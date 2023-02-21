@@ -52,8 +52,8 @@ class Cluster:
 
     def get_GPU_total_real_mem(self) -> int:
         total_real_mem = 0
-        for _, GPU_type in self.cluster_config.GPU_ID_to_GPU_type.items():
-            real_mem = GPUType.real_memory(GPU_type)
+        for GPU_ID in self.cluster_config.GPU_IDs:
+            real_mem = GPUType.real_memory(GPU_type=self.cluster_config.get_GPU(GPU_ID).GPU_type)
             total_real_mem += real_mem
         return total_real_mem
 
@@ -140,7 +140,6 @@ class Assignments:
     @classmethod
     def from_solver_assigment(cls,
                               cluster_config: ClusterConfig,
-                              GPU_ID_to_GPU_type: Dict[str, GPUType],
                               GPU_type_to_task_comp_mem_requirements: Dict[
                                   GPUType, Dict[str, Tuple[int, int]]],
                               solver_assignments: Dict[str, Set[str]]) -> 'Assignments':
@@ -148,7 +147,7 @@ class Assignments:
             lambda: defaultdict(set))
         for GPU_ID, task_IDs in solver_assignments.items():
             for task_ID in task_IDs:
-                GPU_type = GPU_ID_to_GPU_type[GPU_ID]
+                GPU_type = cluster_config.get_GPU(GPU_ID).GPU_type
                 task_comp_mem_requirements = GPU_type_to_task_comp_mem_requirements[GPU_type]
                 comp, mem = task_comp_mem_requirements[task_ID]
                 job_ID = Task.task_ID_to_job_ID(task_ID)
@@ -163,12 +162,11 @@ class Assignments:
     @classmethod
     def from_GPU_ID_to_task_assignments(cls,
                                         cluster_config: ClusterConfig,
-                                        GPU_ID_to_GPU_type: Dict[str, GPUType],
                                         GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> 'Assignments':
         GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(
             lambda: defaultdict(set))
         for GPU_ID, task_assignments in GPU_ID_to_task_assignments.items():
-            GPU_type = GPU_ID_to_GPU_type[GPU_ID]
+            GPU_type = cluster_config.get_GPU(GPU_ID).GPU_type
             for task_assignment in task_assignments:
                 job_ID = task_assignment.task.job_ID
                 GPU_type_to_task_assignments[GPU_type][job_ID].add(task_assignment)
@@ -343,13 +341,13 @@ class Assignments:
             total_profit += np.sum(list(p.values()))
         return total_profit
 
-    def jobs_iteration_time(self, data_source: DataSource) -> Dict[str, float]:
-        d: Dict[str, float] = dict()
+    def jobs_iteration_time(self, data_source: DataSource) -> Dict[str, int]:
+        d: Dict[str, int] = dict()
         for job_ID in self.job_ID_to_task_assignments:
-            d[job_ID] = self.job_iteration_time(data_source=data_source, job_ID=job_ID)
+            d[job_ID] = self.job_iteration_time_nano(data_source=data_source, job_ID=job_ID)
         return d
 
-    def job_iteration_time(self, data_source: DataSource, job_ID: str) -> float:
+    def job_iteration_time_nano(self, data_source: DataSource, job_ID: str) -> int:
         task_assignments = self.job_ID_to_task_assignments[job_ID]
         assert len(task_assignments) > 0
         comp_req = {task_assignment.comp_req + task_assignment.over_supplied for task_assignment in
@@ -364,7 +362,7 @@ class Assignments:
         GPU_type = next(iter(GPU_type))
         worker_count = len(task_assignments)
         job_spec = data_source.get_job_spec(job_ID)
-        return data_source.iteration_time(
+        return data_source.iteration_time_nano(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,

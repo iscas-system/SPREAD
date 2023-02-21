@@ -106,20 +106,20 @@ class JobSpec:
                  job_ID: str,
                  model_name: ModelName,
                  batch_size: int,
-                 submit_time: int,
+                 submit_time_nano: int,
                  plan_GPU: int,
-                 run_time: int,
+                 run_time_nano: int,
                  total_iterations: float,
                  worker_count: int,
                  ):
         self.job_ID: str = job_ID
         self.model_name: ModelName = model_name
         self.batch_size: int = batch_size
-        self.submit_time: int = submit_time
+        self.submit_time_nano: int = submit_time_nano
         self.plan_GPU: int = plan_GPU
         self.plan_worker_count: int = worker_count
         self.plan_comp = (plan_GPU // (100//CompCapacity)) // self.plan_worker_count
-        self.run_time: int = run_time
+        self.run_time_nano: int = run_time_nano
         self.total_iterations: float = total_iterations
 
     def to_dict(self) -> Dict:
@@ -127,11 +127,11 @@ class JobSpec:
             "job_ID": self.job_ID,
             "model_name": self.model_name.name,
             "batch_size": int(self.batch_size),
-            "submit_time": self.submit_time,
+            "submit_time": self.submit_time_nano / 1e9,
             "plan_GPU": int(self.plan_GPU),
             "plan_worker_count": self.plan_worker_count,
             "plan_comp": int(self.plan_comp),
-            "run_time": int(self.run_time),
+            "run_time": self.run_time_nano / 1e9,
             "total_iterations": self.total_iterations
         }
 
@@ -183,11 +183,15 @@ class Task:
 
 
 class GPU:
-    def __init__(self, GPU_type: GPUType, idx: int, node_id: str):
+    def __init__(self, GPU_type: GPUType, GPU_ID: str, node_id: str):
         self.GPU_type: GPUType = GPU_type
-        self.idx: int = idx
-        self.GPU_ID: str = f"{self.GPU_type.name}_{self.idx}"
+        self.GPU_ID: str = GPU_ID
         self.node_id: str = node_id
+
+    @staticmethod
+    def from_idx_node_id(GPU_type: GPUType, idx: int, node_id: str):
+        GPU_ID: str = f"{GPU_type.name}_{idx}"
+        return GPU(GPU_type=GPU_type, GPU_ID=GPU_ID, node_id=node_id)
 
     def __str__(self):
         return f"GPU[ID={self.idx}, node_id={self.node_id}]"

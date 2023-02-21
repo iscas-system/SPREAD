@@ -36,7 +36,7 @@ class Scheduler(ABC):
         GPU_ID_to_remain_comp_mem: Dict[str, Tuple[int, int]] = dict()
         for GPU_ID in self.cluster.cluster_config.GPU_IDs:
             GPU_ID_to_remain_comp_mem[GPU_ID] = CompCapacity, GPUType.normalized_memory(
-                self.cluster.cluster_config.GPU_ID_to_GPU_type[GPU_ID])
+                self.cluster.cluster_config.get_GPU(GPU_ID).GPU_type)
         for GPU_ID in self.cluster.cluster_config.GPU_IDs:
             GPU_mem = GPUType.normalized_memory(
                 GPU_type=self.cluster.cluster_config.GPU_ID_to_GPU_type[GPU_ID])
@@ -78,7 +78,7 @@ class Scheduler(ABC):
             job_IDs = sorted(list(self.cluster.jobs.keys()))
         return GPU_ID_to_task_assignments, job_IDs
 
-    def build_snapshot_record_parameters(self) -> SnapshotRecordParameters:
+    def build_snapshot_record_parameters(self, schedule_time_nano: int) -> SnapshotRecordParameters:
         # scheduler_name: str
         # scheduler_type: SchedulerEnum
         # solver_type: Optional[SolverEnum]
@@ -113,6 +113,7 @@ class Scheduler(ABC):
         running_status = self.cluster.running_status(self.data_source)
 
         return SnapshotRecordParameters(
+            now=schedule_time_nano,
             scheduler_name=self.name,
             scheduler_type=self.scheduler_enum,
             waiting_jobs=running_status["waiting_jobs"],

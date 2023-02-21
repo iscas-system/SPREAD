@@ -38,8 +38,8 @@ def plot_mono_job_performance_bs(ax, model_name: ModelName,
     for i, batch_size in enumerate(batch_sizes):
         iteration_intervals = list()
         for comp in range(10, 110, 10):
-            iter_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                          worker_count=1, cross_node=False, comp_req=to_normalized_comp(comp))
+            iter_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                               worker_count=1, cross_node=False, comp_req=to_normalized_comp(comp))
             iteration_intervals.append(iter_time)
         iteration_intervals = np.array(iteration_intervals, dtype=float)
         iteration_intervals /= 1e9
@@ -124,8 +124,8 @@ def plot_mono_job_performance(ax, model_name: ModelName,
         for i, batch_size in enumerate(batch_sizes):
             iteration_intervals = list()
             for comp in range(10, 110, 10):
-                iter_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                              worker_count=sub_job_count, cross_node=cross_node, comp_req=to_normalized_comp(comp))
+                iter_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                   worker_count=sub_job_count, cross_node=cross_node, comp_req=to_normalized_comp(comp))
                 iteration_intervals.append(iter_time)
             iteration_intervals = np.array(iteration_intervals, dtype=float)
             iteration_intervals /= 1e9
@@ -789,22 +789,22 @@ def plot_mono_job_spread_performance(ax,
                 return original_comp
             if batch_size in original_bs_to_max_perf_comp:
                 return original_bs_to_max_perf_comp[batch_size]
-            original_comp_iter_max = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size,
-                                                            GPU_type=gpu_type,
-                                                            worker_count=original_bar_meta.worker_count,
-                                                            cross_node=original_bar_meta.cross_node,
-                                                            comp_req=CompCapacity)
+            original_comp_iter_max = 1. / ds.iteration_time_nano(model_name=model_name, batch_size=batch_size,
+                                                                 GPU_type=gpu_type,
+                                                                 worker_count=original_bar_meta.worker_count,
+                                                                 cross_node=original_bar_meta.cross_node,
+                                                                 comp_req=CompCapacity)
             k = original_comp_iter_max / CompCapacity
             target_original_comp_req = 2
             for comp_req in range(2, CompCapacity):
-                curr_iter = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                                   worker_count=original_bar_meta.worker_count,
-                                                   cross_node=original_bar_meta.cross_node,
-                                                   comp_req=comp_req)
-                prev_iter = 1. / ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                                   worker_count=original_bar_meta.worker_count,
-                                                   cross_node=original_bar_meta.cross_node,
-                                                   comp_req=comp_req - 1)
+                curr_iter = 1. / ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                        worker_count=original_bar_meta.worker_count,
+                                                        cross_node=original_bar_meta.cross_node,
+                                                        comp_req=comp_req)
+                prev_iter = 1. / ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                        worker_count=original_bar_meta.worker_count,
+                                                        cross_node=original_bar_meta.cross_node,
+                                                        comp_req=comp_req - 1)
                 neighbor_k = curr_iter - prev_iter
                 if neighbor_k < k:
                     target_original_comp_req = comp_req
@@ -818,13 +818,13 @@ def plot_mono_job_spread_performance(ax,
         original_comp_req = to_normalized_comp(original_comp_)
         base_comp_req = original_comp_req // bar_meta.worker_count
         target_comp_req = base_comp_req
-        original_iteration_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                                    worker_count=original_bar_meta.worker_count,
-                                                    cross_node=original_bar_meta.cross_node, comp_req=original_comp_req)
+        original_iteration_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                         worker_count=original_bar_meta.worker_count,
+                                                         cross_node=original_bar_meta.cross_node, comp_req=original_comp_req)
         while target_comp_req <= CompCapacity:
-            curr_iteration_time = ds.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                                    worker_count=bar_meta.worker_count,
-                                                    cross_node=bar_meta.cross_node, comp_req=target_comp_req)
+            curr_iteration_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+                                                         worker_count=bar_meta.worker_count,
+                                                         cross_node=bar_meta.cross_node, comp_req=target_comp_req)
             if curr_iteration_time > original_iteration_time:
                 target_comp_req += 1
             else:

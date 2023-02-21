@@ -75,7 +75,6 @@ class TiresiasScheduler(Scheduler):
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
         assignments = Assignments.from_GPU_ID_to_task_assignments(
             cluster_config=self.cluster.cluster_config,
-            GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
             GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

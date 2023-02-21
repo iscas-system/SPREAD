@@ -64,7 +64,6 @@ class RRScheduler(Scheduler):
                                                   GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         assignments = Assignments.from_GPU_ID_to_task_assignments(
             cluster_config=cluster_config,
-            GPU_ID_to_GPU_type=defaultdict(lambda: GPU_type),
             GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         return assignments
 

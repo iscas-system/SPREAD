@@ -110,7 +110,7 @@ class Simulator:
                 scheduler.cluster.submit(job)
                 submit_jobs.add(job)
             last_assignments = now_assignments
-            info(f"Simulator: current time: {self.now}, done jobs between iterations: {len(done_jobs)}, newly submitted jobs: {len(submit_job_IDs)}.")
+            info(f"Simulator: current time sec: {self.now / 1e9}, done jobs between iterations: {len(done_jobs)}, newly submitted jobs: {len(submit_job_IDs)}.")
             info(f"Simulator: is_preemptive: {is_preemptive_interval}")
             info(f"Simulator: scheduler {scheduler.name} starts do assign.")
             before = time_ns()
@@ -122,7 +122,7 @@ class Simulator:
             scheduler.cluster.ensure_start(self.now)
 
             info(f"Simulator: scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
-            snapshot_record_parameters = scheduler.build_snapshot_record_parameters()
+            snapshot_record_parameters = scheduler.build_snapshot_record_parameters(self.now)
             # enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
             snapshot_record_parameters.do_plot = False
 
@@ -185,7 +185,7 @@ class Simulator:
             scheduler.cluster.assignments = assignments
             scheduler.cluster.ensure_start(self.now)
 
-            snapshot_record_parameters = scheduler.build_snapshot_record_parameters()
+            snapshot_record_parameters = scheduler.build_snapshot_record_parameters(self.now)
 
             do_snapshot_record_plot(session_id=session_id, iteration_idx=i, is_preemptive_interval=True, snapshot_record_parameters=snapshot_record_parameters)
             running_status = scheduler.cluster.running_status(data_source=self.data_source)
@@ -209,22 +209,27 @@ class Simulator:
         job_to_overheads = Assignments.preemptive_overheads(self.data_source, last_assignments, curr_assignments)
         record.add_preemptive_overheads(job_to_overheads)
         for job_ID, overhead in job_to_overheads.items():
-            throughput = curr_assignments.job_iteration_time(data_source=self.data_source, job_ID=job_ID)
+            throughput = curr_assignments.job_iteration_time_nano(data_source=self.data_source, job_ID=job_ID)
             overhead_iterations = overhead / throughput
             cluster.add_preemptive_overhead(job_ID=job_ID, overhead_iterations=overhead_iterations)
 
     def next_events(self, scheduler: Scheduler) -> Optional[Tuple[int, Set[str], Set[str], bool]]:
-        def next_submit_jobs() -> Tuple[Set[str], int]:
+        def next_submit_jobs() -> Tuple[Set[str], int, int]:
             s: Set[str] = set()
             st: Optional[int] = None
-            while self.next_job_idx < len(self.data_source.job_specs) and \
-                    (st is None or self.data_source.job_specs[self.next_job_idx].submit_time == st):
-                job_spec = self.data_source.job_specs[self.next_job_idx]
+            next_job_idx_ = self.next_job_idx
+            while next_job_idx_ < len(self.data_source.job_specs) and \
+                    (st is None or self.data_source.job_specs[next_job_idx_].submit_time_nano == st):
+                job_spec = self.data_source.job_specs[next_job_idx_]
                 if st is None:
-                    st = job_spec.submit_time
+                    st = job_spec.submit_time_nano
                 s.add(job_spec.job_ID)
-                self.next_job_idx += 1
-            return s, np.inf if st is None else st
+                next_job_idx_ += 1
+            if st is not None:
+                st -= self.now
+            else:
+                st = np.inf
+            return s, st, next_job_idx_
 
         def next_done_jobs() -> Tuple[Set[str], int]:
             job_to_remaining_durations = self.job_remaining_durations(cluster=scheduler.cluster)
@@ -238,7 +243,7 @@ class Simulator:
                     min_remain_jobs.add(job_ID)
             return min_remain_jobs, min_remain
 
-        submit_jobs, submit_time = next_submit_jobs()
+        submit_jobs, submit_time, next_job_idx = next_submit_jobs()
         done_jobs, done_time = next_done_jobs()
         if len(submit_jobs) == 0 and len(done_jobs) == 0:
             return None
@@ -248,6 +253,8 @@ class Simulator:
         next_preemptive_time = (scheduler_preemptive_interval + self.last_preemptive_time)
         next_preemptive_duration = (next_preemptive_time - self.now) if scheduler_preemptive_interval != 0 else np.inf
         min_time = int(np.min([submit_time, done_time, next_preemptive_duration]))
+        if min_time == submit_time:
+            self.next_job_idx = next_job_idx
         submit_jobs = [] if min_time != submit_time else submit_jobs
         done_jobs = [] if min_time != done_time else done_jobs
         next_preemptive_interval = next_preemptive_duration == min_time or scheduler_preemptive_interval == 0
@@ -256,7 +263,7 @@ class Simulator:
         return min_time, submit_jobs, done_jobs, next_preemptive_interval
 
     def pass_duration(self, cluster: Cluster, duration: int):
-        job_ID_to_throughput = self.jobs_iteration_time(cluster=cluster)
+        job_ID_to_throughput = self.jobs_iteration_time_nano(cluster=cluster)
         for job_ID_to_task_assignments in cluster.assignments.GPU_type_to_task_assignments.values():
             # Dict[str, Set[TaskAssignment]]
             for job_ID in job_ID_to_task_assignments:
@@ -269,9 +276,9 @@ class Simulator:
                 job.remaining_iterations = remaining_iterations
         self.now += duration
 
-    def job_remaining_durations(self, cluster: Cluster) -> Dict[str, int]:
-        d: Dict[str, int] = dict()
-        job_ID_to_iteration_time = self.jobs_iteration_time(cluster=cluster)
+    def job_remaining_durations(self, cluster: Cluster) -> Dict[str, float]:
+        d: Dict[str, float] = dict()
+        job_ID_to_iteration_time = self.jobs_iteration_time_nano(cluster=cluster)
         for job_ID_to_task_assignments in cluster.assignments.GPU_type_to_task_assignments.values():
             # Dict[str, Set[TaskAssignment]]
             for job_ID in job_ID_to_task_assignments:
@@ -280,7 +287,7 @@ class Simulator:
                 d[job_ID] = int(remaining_duration)
         return d
 
-    def jobs_iteration_time(self, cluster: Cluster) -> Dict[str, float]:
+    def jobs_iteration_time_nano(self, cluster: Cluster) -> Dict[str, float]:
         return cluster.assignments.jobs_iteration_time(data_source=self.data_source)
 
 
@@ -336,8 +343,9 @@ class PlayRecord:
         for job_ID, job in self.done_records.items():
             done_records[job_ID] = {
                 "job_ID": job.job_ID,
-                "start_time": job.start_time,
-                "completion_time": job.completion_time,
+                "submit_time": int(job.submit_time / 1e9),
+                "start_time": int(job.start_time / 1e9),
+                "completion_time": int(job.completion_time / 1e9),
             }
         d["session_id"] = self.session_id
         d["scheduler_name"] = self.scheduler_name

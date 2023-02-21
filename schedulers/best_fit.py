@@ -16,12 +16,12 @@ class BestFitScheduler(Scheduler):
     def GPU_remain_comp_mem(self, GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Dict[
         str, Tuple[int, int]]:
         GPU_ID_to_remain_comp_mem: Dict[str, Tuple[int, int]] = dict()
-        for GPU_ID in self.cluster.GPU_IDs:
+        for GPU_ID in self.cluster.cluster_config.GPU_IDs:
             GPU_ID_to_remain_comp_mem[GPU_ID] = CompCapacity, GPUType.normalized_memory(
-                self.cluster.GPU_ID_to_GPU_type[GPU_ID])
-        for GPU_ID in self.cluster.GPU_IDs:
+                self.cluster.cluster_config.get_GPU(GPU_ID).GPU_type)
+        for GPU_ID in self.cluster.cluster_config.GPU_IDs:
             GPU_mem = GPUType.normalized_memory(
-                GPU_type=self.cluster.GPU_ID_to_GPU_type[GPU_ID])
+                GPU_type=self.cluster.cluster_config.get_GPU(GPU_ID).GPU_type)
             task_assignments = GPU_ID_to_task_assignments[GPU_ID]
             total_comp = 0
             total_mem = 0
@@ -85,7 +85,6 @@ class BestFitScheduler(Scheduler):
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
         assignments = Assignments.from_GPU_ID_to_task_assignments(
             self.cluster.cluster_config,
-            GPU_ID_to_GPU_type=defaultdict(lambda: self.GPU_type),
             GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

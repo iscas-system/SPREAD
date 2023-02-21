@@ -35,7 +35,7 @@ class ProfitComprehensiveUtilization(ProfitCalculator):
         return comp_proportion + mem_proportion
 
 
-def get_profit_calculator(profit_enum: ProfitEnum):
+def get_profit_calculator(profit_enum: ProfitEnum=ProfitEnum.ComprehensiveUtilization):
     return {
         ProfitEnum.ComprehensiveUtilization: ProfitComprehensiveUtilization
     }[profit_enum]

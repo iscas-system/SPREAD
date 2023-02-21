@@ -114,6 +114,7 @@ class JobDistributionSolverResult(BaseModel):
 class SnapshotRecordParameters(BaseModel):
     class Config:
         use_enum_values = True
+    now: int
     scheduler_name: str
     scheduler_type: SchedulerEnum
     solver_type: Optional[SolverEnum]

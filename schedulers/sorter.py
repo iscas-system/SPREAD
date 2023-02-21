@@ -19,7 +19,7 @@ class Sorter:
         for job in jobs:
             job_spec = data_source.get_job_spec(job_ID=job.job_ID)
             remain_ratio = job.remaining_iterations / job_spec.total_iterations
-            remain_time = remain_ratio * job_spec.run_time
+            remain_time = remain_ratio * job_spec.run_time_nano
             job_remaining_services[job.job_ID] = int(job_spec.plan_GPU * remain_time)
 
         jobs.sort(key=lambda job_ID: job_remaining_services[job_ID])
@@ -32,9 +32,9 @@ class Sorter:
         def cmp(job_ID_1: str, job_ID_2: str):
             job_spec_1 = data_source.get_job_spec(job_ID=job_ID_1)
             job_spec_2 = data_source.get_job_spec(job_ID=job_ID_2)
-            if job_spec_1.submit_time == job_spec_2.submit_time:
+            if job_spec_1.submit_time_nano == job_spec_2.submit_time_nano:
                 return 1 if job_spec_1.job_ID < job_spec_2.job_ID else -1
-            return 1 if job_spec_1.submit_time < job_spec_2.submit_time else -1
+            return 1 if job_spec_1.submit_time_nano < job_spec_2.submit_time_nano else -1
 
         job_IDs.sort(key=cmp_to_key(cmp))
         return job_IDs

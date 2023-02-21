@@ -4,12 +4,13 @@ from typing import Tuple, Optional, List, Dict, Set, Any
 import numpy as np
 
 from cluster import TaskAssignment, Assignments
+from config import ClusterConfig
 from log import info
 from object import GPUType, CompCapacity, Task, Job
 from profit import get_profit_calculator
 from scheduler import Scheduler
-from .RR import RRScheduler
-from .solver import SolverParameters, SolverParameters3, do_MMKP_solve_1, do_MMKP_solve_3
+from .solver import SolverParameters, SolverParameters3, do_MMKP_solve_1, do_MMKP_solve_3, do_partition_solve_1, \
+    PartitionSolverParameters, do_job_distribution_solve_1, JobDistributionSolverParameters
 
 
 class MMKPScheduler(Scheduler):
@@ -22,30 +23,35 @@ class MMKPScheduler(Scheduler):
 
     def _init_config(self):
         self.use_split = self.config.get("use_split", True)
-        self.strict = self.config.get("strict", True)
-        self.throughput_degrade_threshold = self.config.get("throughput_degrade_threshold", 0.03)
+        self.partition_strategy = self.config.get("partition_strategy", "heuristic")  # "heuristic", "round"
+        self.partition_size = self.config.get("partition_size", 8)
+        self.job_distributing_strategy = self.config.get("job_distributing_strategy",
+                                                         "heuristic")  # "heuristic", "round"
+        self.job_priority_policy = self.config.get("priority", "FIFO")  # "FIFO", "SRTF"
+        # self.strict = self.config.get("strict", True)
+        # self.throughput_degrade_threshold = self.config.get("throughput_degrade_threshold", 0.03)
         self.GPU_type = GPUType.RTX_2080Ti
-        self.plan_comp_unit = self.config.get("plan_comp_unit", 1)
-        self.score_weights = [
-            MMKPScheduler.ScoreWeights((0, 0.2), 4, 1),
-            MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 4)
-        ]
-        self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 0.6)
-        self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 0.5)
-        self.direct_saturate_factor = self.config.get("direct_saturate_factor", 2.5)
-        self.non_preemptive_direct_saturate_factor = self.config.get("non_preemptive_direct_saturate_factor", 128)
-        self.non_preemptive_splitting_saturate_factor = self.config.get("non_preemptive_splitting_saturate_factor", 32)
-        self.saturate_partitions = self.config.get("saturate_partitions", 5)
+        # self.plan_comp_unit = self.config.get("plan_comp_unit", 1)
+        # self.score_weights = [
+        #     MMKPScheduler.ScoreWeights((0, 0.2), 4, 1),
+        #     MMKPScheduler.ScoreWeights((0.2, np.inf), 4, 4)
+        # ]
+        # self.resource_score_upper_bound = self.config.get("resource_score_upper_bound", 0.6)
+        # self.splitting_saturate_factor = self.config.get("splitting_saturate_factor", 0.5)
+        # self.direct_saturate_factor = self.config.get("direct_saturate_factor", 2.5)
+        # self.non_preemptive_direct_saturate_factor = self.config.get("non_preemptive_direct_saturate_factor", 128)
+        # self.non_preemptive_splitting_saturate_factor = self.config.get("non_preemptive_splitting_saturate_factor", 32)
+        # self.saturate_partitions = self.config.get("saturate_partitions", 5)
 
-        self.direct_saturate_partitions = self.config.get("direct_saturate_partitions", 20)
-        self.splitting_saturate_partitions = self.config.get("splitting_saturate_partitions", 5)
-        self.trail_best_splittable_max_depth = self.config.get("trail_best_splittable_max_depth", 10)
-        self.exploration_max_depth = self.config.get("exploration_max_depth", 20)
-        self.use_round_robin_resource_ratio = self.config.get("use_round_robin_resource_ratio", 0.75)
-        self.solver_duration_upper_bound = self.config.get("solver_duration_upper_bound", 60)
-        self.splitting_jobs_proportion = self.config.get("splitting_jobs_proportion", 1.5)
+        # self.direct_saturate_partitions = self.config.get("direct_saturate_partitions", 20)
+        # self.splitting_saturate_partitions = self.config.get("splitting_saturate_partitions", 5)
+        # self.trail_best_splittable_max_depth = self.config.get("trail_best_splittable_max_depth", 10)
+        # self.exploration_max_depth = self.config.get("exploration_max_depth", 20)
+        # self.use_round_robin_resource_ratio = self.config.get("use_round_robin_resource_ratio", 0.75)
+        # self.solver_duration_upper_bound = self.config.get("solver_duration_upper_bound", 60)
+        # self.splitting_jobs_proportion = self.config.get("splitting_jobs_proportion", 1.5)
         self.timeout = self.config.get("timeout", 30)
-        self.rand_variants = self.config.get("rand_variants", False)
+        # self.rand_variants = self.config.get("rand_variants", False)
 
         self.selector = self.config.get("selector", "balance")
 
@@ -95,46 +101,136 @@ class MMKPScheduler(Scheduler):
         def _comprehensive_score(self) -> float:
             return self.resource_score
 
-    def use_round_robin(self, all_job_IDs: Set[str], total_normalized_resource: float, preemptive: bool) -> Optional[
-        Tuple[Assignments, Optional[Any]]]:
-        total_plan_comp = 0
-        total_plan_mem = 0
-        for job_ID in all_job_IDs:
-            job_spec = self.data_source.get_job_spec(job_ID)
-            total_plan_comp += job_spec.plan_comp * job_spec.plan_worker_count
-            _, task_mem = self.data_source.get_job_task_memory(job_ID=job_ID,
-                                                               worker_count=job_spec.plan_worker_count)
-            plan_mem = task_mem * job_spec.plan_worker_count
-            total_plan_mem += plan_mem
-        total_consumed_normalized_comp = total_plan_comp / CompCapacity
-        total_consumed_normalized_mem = total_plan_mem / GPUType.normalized_memory(self.GPU_type)
-        total_consumed_normalized_resource = total_consumed_normalized_comp + total_consumed_normalized_mem
-        if total_consumed_normalized_resource < total_normalized_resource * self.use_round_robin_resource_ratio:
-            info("MMKP: Jobs are not enough to saturate, use RR instead.")
-            sche = RRScheduler(self.name, self.scheduler_enum, None, None, self.data_source, self.cluster, {})
-            return sche.do_assign(preemptive, 0, set())
-        return None
-
     def reuse_assignments(self):
         return self.cluster.assignments.clone(), MMKPScheduler.build_statistics()
 
     def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
         Assignments, Optional[Any]]:
-        GPU_size = len(self.cluster.cluster_config.GPU_IDs)
+        self.cluster.jobs.keys()
+        partition_solver_result = do_partition_solve_1(PartitionSolverParameters(
+            timeout=self.timeout,
+            GPU_ID_to_node_id=self.cluster.cluster_config.GPU_ID_to_node_id,
+            partition_size=self.partition_size,
+            strategy=self.partition_strategy,
+        ))
+        GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive=preemptive)
+        GPU_comp_mem_capacity = self.GPU_resource_capacity(cluster_config=self.cluster.cluster_config,
+                                                           curr_GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+        job_original_comp_mem_demands = self.job_original_comp_mem_demands(job_IDs=job_IDs)
+
+        job_distribution_result = do_job_distribution_solve_1(JobDistributionSolverParameters(
+            partition_to_GPU_IDs=partition_solver_result.partition_to_GPU_IDs,
+            GPU_comp_mem_capacity=GPU_comp_mem_capacity,
+            GPU_comp_mem_total_capacity=(CompCapacity, GPUType.normalized_memory(self.GPU_type)),
+            job_comp_mem_demand=job_original_comp_mem_demands,
+            job_priority=self.job_priority_sort(job_IDs=job_IDs),
+            strategy=self.job_distributing_strategy
+        ))
+
+        partition_cluster_configs = {partition_ID: GPU_IDs for partition_ID, GPU_IDs in partition_solver_result.partition_to_GPU_IDs.items()}
+
+        partition_to_task_assignments = self.partition_assignments(partition_to_GPU_IDs=partition_solver_result.partition_to_GPU_IDs, GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+        partition_to_assignments = {
+            partition_ID: Assignments.from_GPU_ID_to_task_assignments(partition_cluster_configs[partition_ID], partition_to_task_assignments[partition_ID])
+            for partition_ID in partition_solver_result.partition_to_GPU_IDs.keys()
+        }
+
+        partition_to_final_assignments = dict()
+        partition_to_statistics = dict()
+        for partition_ID, partition_job_IDs in job_distribution_result.partition_to_jobs.items():
+            solved_partition_assignments, solved_partition_statistics = self.do_assign_on_partition(partition_cluster_config=partition_cluster_configs[partition_ID],
+                                        partition_assignments=partition_to_assignments[partition_ID],
+                                        preemptive=preemptive,
+                                        job_IDs=partition_job_IDs)
+            partition_to_final_assignments[partition_ID] = solved_partition_assignments
+            partition_to_statistics[partition_ID] = solved_partition_statistics
+        final_assignments = self.merge_partition_assignments(partition_to_final_assignments)
+        return final_assignments, partition_to_statistics
+
+    @staticmethod
+    def merge_partition_assignments(partition_to_assignments: Dict[str, Assignments]) -> Assignments:
+        GPU_ID_to_task_assignments = defaultdict(set)
+        for partition_id, assignments in partition_to_assignments.items():
+            for GPU_ID, task_assignments in assignments.GPU_ID_to_task_assignments.items():
+                GPU_ID_to_task_assignments[GPU_ID].update(task_assignments)
+        return Assignments.from_GPU_ID_to_task_assignments(GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
+
+    @staticmethod
+    def partition_assignments(partition_to_GPU_IDs: Dict[str, List[str]], GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Dict[str, Dict[str, Set[TaskAssignment]]]:
+        GPU_ID_to_partition_ID = dict()
+        for partition_id, GPU_IDs in partition_to_GPU_IDs:
+            for GPU_ID in GPU_IDs:
+                GPU_ID_to_partition_ID[GPU_ID] = partition_id
+
+        partition_id_to_task_assignments = defaultdict(lambda :defaultdict(set))
+        for GPU_ID, task_assignments in GPU_ID_to_task_assignments.items():
+            partition_id = GPU_ID_to_partition_ID[GPU_ID]
+            partition_id_to_task_assignments[partition_id][GPU_ID].update(task_assignments)
+        return partition_id_to_task_assignments
+
+    def create_partition_cluster_config(self, partition_ID: str, partition_GPU_IDs: List[str]):
+        GPU_ID_to_node_id = self.cluster.cluster_config.GPU_ID_to_node_id
+        partition_GPU_ID_type_node_id = dict()
+        for partition_GPU_ID in partition_GPU_IDs:
+            GPU_type = self.cluster.cluster_config.get_GPU(partition_GPU_ID).GPU_type
+            node_id = GPU_ID_to_node_id[partition_GPU_ID]
+            partition_GPU_ID_type_node_id[partition_GPU_ID] = (GPU_type, node_id)
+        partition_cluster_config = ClusterConfig.from_GPU_specs(name=partition_ID, GPU_ID_type_node_id=partition_GPU_ID_type_node_id)
+        return partition_cluster_config
+
+    def job_priority_sort(self, job_IDs: List[str]) -> List[str]:
+        if self.job_priority_policy == "FIFO":
+            return sorted(job_IDs, key=lambda j: self.data_source.get_job_spec(job_ID=j).submit_time_nano)
+        assert False
+
+    def job_original_comp_mem_demands(self, job_IDs: List[str]) -> Dict[str, Tuple[int, int]]:
+        return {j: self.job_original_comp_mem_demand(job_ID=j) for j in job_IDs}
+
+    def job_original_comp_mem_demand(self, job_ID: str) -> Tuple[int, int]:
+        comp = self.data_source.job_maximized_performance_comp(job_ID=job_ID, GPU_type=self.GPU_type, worker_count=1,
+                                                               cross_node=False)
+        _, mem = self.data_source.get_job_task_memory(job_ID=job_ID, worker_count=1)
+        return comp, mem
+
+    def GPU_resource_capacity(self, cluster_config: ClusterConfig,
+                              curr_GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Dict[
+        str, Tuple[int, int]]:
+        GPU_mem = GPUType.normalized_memory(self.GPU_type)
+        GPU_comp_mem_capacity: Dict[str, Tuple[int, int]] = dict()
+        for GPU_ID in cluster_config.GPU_IDs:
+            GPU_comp_mem_capacity[GPU_ID] = (CompCapacity, GPU_mem)
+
+        total_normalized_consumed_comp = 0
+        total_normalized_consumed_mem = 0
+        for GPU_ID, task_assignments in curr_GPU_ID_to_task_assignments.items():
+            for task_assignment in task_assignments:
+                total_normalized_consumed_comp += task_assignment.comp_req / CompCapacity
+                total_normalized_consumed_mem += task_assignment.memory / GPU_mem
+                comp, mem = GPU_comp_mem_capacity[GPU_ID]
+                GPU_comp_mem_capacity[GPU_ID] = comp - task_assignment.comp_req, mem - task_assignment.memory
+        return GPU_comp_mem_capacity
+
+    def do_assign_on_partition(self,
+                               partition_cluster_config: ClusterConfig,
+                               partition_assignments: Assignments,
+                               preemptive: bool,
+                               job_IDs: List[str]) -> Tuple[Assignments, Optional[Any]]:
+        GPU_size = len(partition_cluster_config.GPU_IDs)
         total_comp = GPU_size * CompCapacity
         GPU_mem = GPUType.normalized_memory(self.GPU_type)
         total_mem = GPU_mem * GPU_size
         total_normalized_comp = total_comp / CompCapacity
         total_normalized_mem = total_mem / GPU_mem
-        all_job_IDs = set(self.cluster.jobs.keys())
+        all_job_IDs = job_IDs
+
         if not preemptive:
-            GPU_ID_to_task_assignments = self.cluster.assignments.GPU_ID_to_task_assignments
-            all_job_IDs -= set(self.cluster.assignments.job_ID_to_task_assignments.keys())
+            GPU_ID_to_task_assignments = partition_assignments.GPU_ID_to_task_assignments
+            all_job_IDs -= set(partition_assignments.job_ID_to_task_assignments.keys())
         else:
             GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = defaultdict(set)
         all_job_IDs = sorted(list(all_job_IDs))
         GPU_comp_mem_capacity: Dict[str, Tuple[int, int]] = dict()
-        for GPU_ID in self.cluster.cluster_config.GPU_IDs:
+        for GPU_ID in partition_cluster_config.GPU_IDs:
             GPU_comp_mem_capacity[GPU_ID] = (CompCapacity, GPU_mem)
 
         total_normalized_consumed_comp = 0
@@ -148,16 +244,11 @@ class MMKPScheduler(Scheduler):
                     GPU_comp_mem_capacity[GPU_ID] = comp - task_assignment.comp_req, mem - task_assignment.memory
         total_remain_normalized_resource = total_normalized_comp - total_normalized_consumed_comp + total_normalized_mem - total_normalized_consumed_mem
         info(
-            f"MMKP starts do assign, preemptive: {preemptive}, done jobs between preemption: {done_jobs_between_preemption}, total_normalized_comp: {total_normalized_comp}, "
+            f"MMKP starts do assign, preemptive: {preemptive}, total_normalized_comp: {total_normalized_comp}, "
             f"total_normalized_mem: {total_normalized_mem}, total_normalized_consumed_comp: {total_normalized_consumed_comp},"
             f"total_normalized_consumed_mem: {total_normalized_consumed_mem}, total_remain_normalized_resource: {total_remain_normalized_resource}")
-        use_round_robin_result = self.use_round_robin(all_job_IDs=set(all_job_IDs),
-                                                      total_normalized_resource=total_remain_normalized_resource,
-                                                      preemptive=preemptive)
-        if use_round_robin_result is not None:
-            return use_round_robin_result
 
-        profit_calculator = get_profit_calculator(profit_enum=self.profit_enum)
+        profit_calculator = get_profit_calculator()
 
         job_ID_to_profit: Dict[str, float] = profit_calculator.calculate_jobs(data_source=self.data_source,
                                                                               job_IDs=all_job_IDs,
@@ -213,22 +304,10 @@ class MMKPScheduler(Scheduler):
             GPUType, Dict[str, Tuple[int, int]]] = {self.GPU_type: task_comp_mem_requirements}
         assignments = Assignments.from_solver_assigment(
             cluster_config=self.cluster.cluster_config,
-            GPU_ID_to_GPU_type=self.cluster.cluster_config.GPU_ID_to_GPU_type,
             GPU_type_to_task_comp_mem_requirements=GPU_type_to_task_comp_mem_requirements,
             solver_assignments=optimum_assignment)
         if not preemptive:
             assignments = self.cluster.assignments.merge(assignments)
-        if not self.strict:
-            GPU_ID_to_task_assignments = assignments.GPU_ID_to_task_assignments
-            assigned_jobs = set(assignments.job_ID_to_task_assignments.keys())
-            unassigned_jobs = [job_ID for job_ID in all_job_IDs if job_ID not in assigned_jobs]
-            assignments = RRScheduler.assign_jobs(self.cluster.cluster_config,
-                                                  self.strict,
-                                                  self.data_source,
-                                                  unassigned_jobs,
-                                                  self.cluster.cluster_config.GPU_IDs,
-                                                  self.GPU_type,
-                                                  GPU_ID_to_task_assignments)
 
         total_splitting_job_supplied_comp = 0
         total_splitting_job_supplied_mem = 0
