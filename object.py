@@ -211,6 +211,27 @@ class Node:
     def __str__(self):
         return f"Node[node_id={self.node_id}]"
 
+
+class TaskAssignment:
+    def __init__(self, GPU_ID: str, GPU_type: GPUType, task: Task, comp_req: int, memory: int,
+                 over_supplied: int = 0):
+        self.GPU_ID: str = GPU_ID
+        self.GPU_type: GPUType = GPU_type
+        self.task: Task = task
+        self.comp_req: int = comp_req
+        self.memory: int = memory
+        self.over_supplied: int = over_supplied
+
+    def __hash__(self):
+        return hash(self.task)
+
+    def __eq__(self, other):
+        return self.task == other.task
+
+    def __ne__(self, other):
+        return self.task != other.task
+
+
 class SchedulerEnum(Enum):
     MMKP = "MMKP"
     RoundRobin = "RoundRobin"
@@ -235,6 +256,7 @@ class SolverEnum(Enum):
 
 class ProfitEnum(Enum):
     ComprehensiveUtilization = "ComprehensiveUtilization"
+    Throughput = "Throughput"
 
 
 class PriorityType(Enum):

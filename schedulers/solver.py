@@ -8,7 +8,7 @@ import gurobipy as gu
 from gurobipy import GRB
 
 from log import *
-from model import SolverResult, SolverParameters, SolverParameters2, SolverParameters3, SolverParameters4, \
+from model import SolverResult, SolverParameters, SolverParameters2, SolverParameters3, SolverParametersSC, \
     PartitionSolverParameters, \
     PartitionSolverResult, JobDistributionSolverParameters, JobDistributionSolverResult
 from object import SolverEnum
@@ -74,10 +74,10 @@ def do_MMKP_solve_3(solver_params: SolverParameters3) -> Optional[SolverResult]:
     return solver_result
 
 
-def do_MMKP_solve_4(solver_params: SolverParameters4) -> Optional[SolverResult]:
+def do_MMKP_solve_SC(solver_params: SolverParametersSC) -> Optional[SolverResult]:
     # info(f"received solver parameters, solver_params: {solver_params}")
     start = time.time_ns()
-    solve_raw_res = AssignmentSolver.MMKP_4(
+    solve_raw_res = AssignmentSolver.MMKP_SC(
         timeout=solver_params.timeout,
         job_ID_to_spread_job_IDs=solver_params.job_ID_to_spread_job_IDs,
         spread_job_ID_to_task_sets=solver_params.spread_job_ID_to_task_sets,
@@ -90,12 +90,14 @@ def do_MMKP_solve_4(solver_params: SolverParameters4) -> Optional[SolverResult]:
     if solve_raw_res is None:
         return None
     assignment, profit = solve_raw_res
-    solver_result = SolverResult(solver_parameters4=solver_params, duration=(end - start), profit=profit,
+    solver_result = SolverResult(solver_parameters_SC=solver_params,
+                                 duration=(end - start),
+                                 profit=profit,
                                  assignment=assignment)
     return solver_result
 
 
-def do_partition_solve_1(solver_params: PartitionSolverParameters) -> PartitionSolverResult:
+def do_partition_solve(solver_params: PartitionSolverParameters) -> PartitionSolverResult:
     start = time.time_ns()
     solve_raw_res = PartitionSolver.solve(
         GPU_ID_to_node_id=solver_params.GPU_ID_to_node_id,
@@ -112,7 +114,7 @@ def do_partition_solve_1(solver_params: PartitionSolverParameters) -> PartitionS
     return solver_result
 
 
-def do_job_distribution_solve_1(solver_params: JobDistributionSolverParameters) -> JobDistributionSolverResult:
+def do_job_distribution_solve(solver_params: JobDistributionSolverParameters) -> JobDistributionSolverResult:
     start = time.time_ns()
     solve_raw_res = JobDistributionSolver.solve_heuristic(
         partition_to_GPU_IDs=solver_params.partition_to_GPU_IDs,
@@ -569,7 +571,7 @@ class AssignmentSolver:
         return assignment, cal_profit(task_comp_mem_requirements_and_profits, assignment)
 
     @staticmethod
-    def MMKP_4(
+    def MMKP_SC(
             timeout: int,
             job_ID_to_spread_job_IDs: Dict[str, List[str]],
             spread_job_ID_to_task_sets: Dict[str, List[str]],
@@ -1051,7 +1053,7 @@ def do_test_4():
                               "job_2|sp_4|in"]
     cross_node_spread_job_IDs = ["job_1|sp_2|cn"]
 
-    assignment, profit = AssignmentSolver.MMKP_4(
+    assignment, profit = AssignmentSolver.MMKP_SC(
         timeout=30,
         job_ID_to_spread_job_IDs=job_ID_to_spread_job_IDs,
         spread_job_ID_to_task_sets=spread_job_ID_to_task_sets,

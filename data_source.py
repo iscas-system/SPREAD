@@ -48,7 +48,7 @@ class MonoJobExecInfo:
         self.__parse_raw_json()
 
     def __parse_raw_json(self):
-        self.iteration_count: int = self.raw_json["iteration_count"]
+        self.iteration_time_nano: int = self.raw_json["iteration_time_nano"]
         self.iteration_intervals: List[int] = self.raw_json["iteration_intervals"]
         self.total_time_ns: int = self.raw_json["total_time_ns"]
         self.mem_infos: List[List[int]] = self.raw_json["mem_infos"]
@@ -398,16 +398,16 @@ class DataSource:
                         worker_count: int,
                         cross_node: bool,
                         remaining_iterations: float) -> int:
-        iteration_time = self.job_iteration_time(job_ID, GPU_type, comp_req, worker_count, cross_node)
+        iteration_time = self.job_iteration_time_nano(job_ID, GPU_type, comp_req, worker_count, cross_node)
         remain_duration = int(remaining_iterations * iteration_time)
         return remain_duration
 
-    def job_iteration_time(self,
-                           job_ID: str,
-                           GPU_type: GPUType,
-                           comp_req: float,
-                           worker_count: int,
-                           cross_node: bool) -> float:
+    def job_iteration_time_nano(self,
+                                job_ID: str,
+                                GPU_type: GPUType,
+                                comp_req: float,
+                                worker_count: int,
+                                cross_node: bool) -> float:
         job_spec = self.job_specs_dict[job_ID]
         iteration_time = self.iteration_time_nano(
             model_name=job_spec.model_name,
@@ -420,11 +420,11 @@ class DataSource:
         return iteration_time
 
     model_maximized_performance_comps_cache = pd.DataFrame(
-        columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_count",
+        columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_time_nano",
                  "comp"])  # model_name -> batch_size -> worker_count -> cross_node -> (performance, comp)
 
     def model_maximized_performance_comp(self, model_name: ModelName, batch_size: int, GPU_type: GPUType,
-                                         worker_count: int, cross_node: bool):
+                                         worker_count: int, cross_node: bool) -> Tuple[int, int]:
         model_name_str = model_name.name
         GPU_type_str = GPU_type.name
         df = self.model_maximized_performance_comps_cache
@@ -438,34 +438,24 @@ class DataSource:
         assert len(filtered) <= 1
         if len(filtered) == 1:
             d = filtered.iloc[0].to_dict()
-            return d["comp"]
+            return d["comp"], d["iteration_time_nano"]
 
         comp_end = CompCapacity + 1
-        before_last_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
-                                                    comp_req=1,
-                                                    worker_count=worker_count, cross_node=cross_node)
         max_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
                                             comp_req=CompCapacity,
                                             worker_count=worker_count, cross_node=cross_node)
         maximized_perf_comp = 1
         for comp in range(2, comp_end, 1):
-            # last_iter = self.iteration_time(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
-            #                                 comp_req=comp - 1,
-            #                                 worker_count=worker_count, cross_node=cross_node)
             curr_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,
                                                  comp_req=comp,
                                                  worker_count=worker_count, cross_node=cross_node)
             if abs(curr_iter - max_iter) / max_iter < 0.05:
                 maximized_perf_comp = comp
                 break
-            # if (last_iter - curr_iter) < 1 / 4 * (before_last_iter - last_iter):
-            #     maximized_perf_comp = comp - 1
-            #     break
-            # before_last_iter = last_iter
         if maximized_perf_comp is None:
             maximized_perf_comp = CompCapacity
 
-        maximized_perf_iteration_count = self.iteration_time_nano(model_name=model_name, batch_size=batch_size,
+        maximized_perf_iteration_time_nano = self.iteration_time_nano(model_name=model_name, batch_size=batch_size,
                                                                   GPU_type=GPU_type,
                                                                   comp_req=maximized_perf_comp,
                                                                   worker_count=worker_count, cross_node=cross_node)
@@ -474,15 +464,16 @@ class DataSource:
             "GPU_type": GPU_type,
             "batch_size": batch_size,
             "worker_count": worker_count,
-            "cross_node": cross_node, "iteration_count": maximized_perf_iteration_count,
+            "cross_node": cross_node, 
+            "iteration_time_nano": maximized_perf_iteration_time_nano,
             "comp": maximized_perf_comp
         }])
         df = pd.concat([self.model_maximized_performance_comps_cache, new_record])
         self.model_maximized_performance_comps_cache = df
 
-        return maximized_perf_comp
+        return maximized_perf_comp, maximized_perf_iteration_time_nano
 
-    def job_maximized_performance_comp(self, job_ID: str, GPU_type: GPUType, worker_count: int, cross_node: bool):
+    def job_maximized_performance_comp(self, job_ID: str, GPU_type: GPUType, worker_count: int, cross_node: bool) -> Tuple[int, int]:
         job_spec = self.job_specs_dict[job_ID]
         return self.model_maximized_performance_comp(model_name=job_spec.model_name, batch_size=job_spec.batch_size,
                                                      GPU_type=GPU_type, worker_count=worker_count,
@@ -631,19 +622,19 @@ def do_test():
     d = DataSource(data_source_config=c.data_source_configs["data_source_ali_static"],
                    enabled_GPU_types={GPUType.RTX_2080Ti})
     print(d.job_specs_dict["job_ID_103"].to_dict())
-    comp = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
+    comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
                                               GPU_type=GPUType.RTX_2080Ti, worker_count=1, cross_node=False)
     print(comp)
-    comp = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
+    comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
                                               GPU_type=GPUType.RTX_2080Ti, worker_count=2, cross_node=False)
     print(comp)
-    comp = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
+    comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
                                               GPU_type=GPUType.RTX_2080Ti, worker_count=2, cross_node=True)
     print(comp)
-    comp = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
+    comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
                                               GPU_type=GPUType.RTX_2080Ti, worker_count=4, cross_node=False)
     print(comp)
-    comp = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
+    comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
                                               GPU_type=GPUType.RTX_2080Ti, worker_count=4, cross_node=True)
     print(comp)
     print(d.model_maximized_performance_comps_cache)

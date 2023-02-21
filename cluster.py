@@ -6,7 +6,7 @@ import numpy as np
 
 from config import ClusterConfig, get_config
 from data_source import DataSource
-from object import GPU, GPUType, Job, Task, CompCapacity, ProfitEnum
+from object import GPU, GPUType, Job, Task, TaskAssignment, CompCapacity, ProfitEnum
 from profit import ProfitCalculator, get_profit_calculator
 from itertools import count
 
@@ -68,26 +68,6 @@ class Cluster:
             "done_jobs": len(self.done_jobs)
         }
 
-class TaskAssignment:
-    def __init__(self, GPU_ID: str, GPU_type: GPUType, task: Task, comp_req: int, memory: int,
-                 over_supplied: int = 0):
-        self.GPU_ID: str = GPU_ID
-        self.GPU_type: GPUType = GPU_type
-        self.task: Task = task
-        self.comp_req: int = comp_req
-        self.memory: int = memory
-        self.over_supplied: int = over_supplied
-
-    def __hash__(self):
-        return hash(self.task)
-
-    def __eq__(self, other):
-        return self.task == other.task
-
-    def __ne__(self, other):
-        return self.task != other.task
-
-
 class Assignments:
     def __init__(self, cluster_config: ClusterConfig, GPU_type_to_task_assignments: Optional[Dict[GPUType, Dict[str, Set[TaskAssignment]]]] = None):
         self.cluster_config: ClusterConfig = cluster_config
@@ -101,7 +81,7 @@ class Assignments:
         for GPU_type, job_ID_task_assignments in self.GPU_type_to_task_assignments.items():
             for job_ID, task_assignments in job_ID_task_assignments.items():
                 self.job_ID_to_task_assignments[job_ID] = task_assignments
-        self.GPU_ID_to_task_assignments = self._get_GPU_ID_to_task_assignments()
+        self.GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = self._get_GPU_ID_to_task_assignments()
 
     def to_solver_assignments(self) -> Dict[str, Set[str]]:
         d: Dict[str, Set[str]] = defaultdict(set)
@@ -336,8 +316,10 @@ class Assignments:
         for GPU_type, job_ID_to_task_assignments in self.GPU_type_to_task_assignments.items():
             p = profit_calculator.calculate_jobs(data_source=data_source,
                                                  job_IDs=set(job_ID_to_task_assignments.keys()),
+                                                 cluster_config=self.cluster_config,
                                                  GPU_type=GPU_type,
-                                                 job_lack_supply=job_lack_supply)
+                                                 job_lack_supply=job_lack_supply,
+                                                 job_ID_to_task_assignments=job_ID_to_task_assignments)
             total_profit += np.sum(list(p.values()))
         return total_profit
 
@@ -414,7 +396,7 @@ class Assignments:
         job_comp_util, total_comp_util = self.get_job_computation_utilization(data_source)
         job_real_mem, total_real_mem = self.get_job_real_mem_utilization(data_source=data_source)
         cluster_real_total_mem = cluster.get_GPU_total_real_mem()
-        profit = self.calc_profits(data_source=data_source, profit_calculator=get_profit_calculator(ProfitEnum.ComprehensiveUtilization))
+        profit = self.calc_profits(data_source=data_source, profit_calculator=get_profit_calculator(ProfitEnum.Throughput))
         deployed_jobs, deployed_dist_jobs, deployed_spread_jobs = self.deployed_jobs(data_source)
 
         job_ID_to_task_assignments: DefaultDict = defaultdict(list)

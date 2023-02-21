@@ -43,7 +43,7 @@ class SolverParameters3(BaseModel):
     task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
 
 
-class SolverParameters4(BaseModel):
+class SolverParametersSC(BaseModel):
     class Config:
         use_enum_values = True
 
@@ -65,7 +65,7 @@ class SolverResult(BaseModel):
     solver_parameters: Optional[SolverParameters]
     solver_parameters2: Optional[SolverParameters2]
     solver_parameters3: Optional[SolverParameters3]
-    solver_parameters4: Optional[SolverParameters4]
+    solver_parameters_SC: Optional[SolverParametersSC]
     duration: int
     profit: int
     assignment: Dict[str, Set[str]]

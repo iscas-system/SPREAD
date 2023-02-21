@@ -7,6 +7,7 @@ from typing import Tuple, Dict, List, Optional, Set, DefaultDict
 from collections import defaultdict
 from object import ModelName, model_name_strs, SchedulerEnum, GPUType, SimulatingMethod, NodeType, Node, GPU
 
+job_deploy_specs = (False, 1), (False, 2), (True, 2), (False, 4), (True, 4) # cross_node, worker_count
 
 class Config:
     def __init__(self, config_path: str):
