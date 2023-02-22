@@ -85,11 +85,11 @@ class ProfitThroughput(ProfitCalculator):
                   worker_count: Optional[int]=None,
                   cross_node: Optional[bool]=None,
                   job_lack_supply: Optional[Dict[str, int]]=None) -> float:
-        min_iteration_time_nano = np.inf
+        min_iteration_time_nano = np.iinfo(int).max
         for spec in job_deploy_specs:
             cross_node_, worker_count_ = spec
             _, iteration_time_nano = data_source.job_maximized_performance_comp(job_ID, GPU_type, worker_count_, cross_node_)
-            min_iteration_time_nano = np.min(iteration_time_nano, min_iteration_time_nano)
+            min_iteration_time_nano = np.min([iteration_time_nano, min_iteration_time_nano])
 
         assert (task_assignments is not None and cluster_config is not None)\
                or (comp_req is not None and worker_count is not None and cross_node is not None)

@@ -20,7 +20,9 @@ from schedulers import init_scheduler
 class Simulator:
     def __init__(self,
                  data_source_config: DataSourceConfig,
-                 cluster_config: ClusterConfig):
+                 cluster_config: ClusterConfig,
+                 scheduler_name: str
+                 ):
         c = get_config()
         self.simulating_method: SimulatingMethod = c.simulating_method
         self.simulating_method_config: Dict = c.simulating_method_config
@@ -28,21 +30,20 @@ class Simulator:
         self.data_source: DataSource = DataSource(data_source_config=data_source_config,
                                                   enabled_GPU_types=cluster_config.GPU_types)
         self.cluster_config: ClusterConfig = cluster_config
-        self.schedulers: List[Scheduler] = list()
-        for scheduler_name in c.enabled_scheduler_names:
-            scheduler_desc = c.schedulers[scheduler_name]
-            scheduler_enum = scheduler_desc.scheduler_enum
-            scheduler_config = scheduler_desc.config
-            scheduler = init_scheduler(
-                name=scheduler_desc.name,
-                scheduler_enum=scheduler_enum,
-                solver_enum=SolverEnum[scheduler_config["solver_enum"]] if "solver_enum" in scheduler_config else None,
-                profit_enum=ProfitEnum[scheduler_config.get("profit_enum", ProfitEnum.ComprehensiveUtilization.name)],
-                data_source=self.data_source,
-                cluster=Cluster(cluster_config=cluster_config),
-                config=scheduler_config)
-            self.schedulers.append(scheduler)
-        info(f"Simulator Initialized, enabling schedulers: {[scheduler.name for scheduler in self.schedulers]}")
+        self.scheduler_name: str = scheduler_name
+        scheduler_desc = c.schedulers[scheduler_name]
+        scheduler_enum = scheduler_desc.scheduler_enum
+        scheduler_config = scheduler_desc.config
+        self.scheduler = init_scheduler(
+            name=scheduler_desc.name,
+            scheduler_enum=scheduler_enum,
+            solver_enum=SolverEnum[scheduler_config["solver_enum"]] if "solver_enum" in scheduler_config else None,
+            profit_enum=ProfitEnum[scheduler_config.get("profit_enum", ProfitEnum.Throughput.name)],
+            data_source=self.data_source,
+            cluster=Cluster(cluster_config=cluster_config),
+            config=scheduler_config)
+
+        info(f"Simulator Initialized, scheduler = {self.scheduler_name}")
         self.now: int = 0
         self.next_job_idx: int = 0
         self.last_preemptive_time: int = 0
@@ -53,16 +54,16 @@ class Simulator:
         self.last_preemptive_time = 0
 
     def play_trace(self):
-        for scheduler in self.schedulers:
-            info(f"Simulator playing trace for scheduler: {scheduler.name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
-            self.__init_play_status()
-            self.play_trace_for_scheduler(scheduler)
+        info(
+            f"Simulator playing trace for scheduler: {self.scheduler_name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
+        self.__init_play_status()
+        self.play_trace_for_scheduler(self.scheduler)
 
     def play_random_placement(self):
-        for scheduler in self.schedulers:
-            info(f"Simulator playing random placement for scheduler: {scheduler.name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
-            self.__init_play_status()
-            self.play_random_placement_for_scheduler(scheduler)
+        info(
+            f"Simulator playing random placement for scheduler: {self.scheduler_name}, data_source_name: {self.data_source_config.name}, cluster_config_name: {self.cluster_config.name}")
+        self.__init_play_status()
+        self.play_random_placement_for_scheduler(self.scheduler)
 
     def play_trace_for_scheduler(self, scheduler: Scheduler):
         c = get_config()

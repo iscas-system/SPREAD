@@ -20,6 +20,7 @@ class Config:
         self.enabled_scheduler_names: List[str] = d["enabled_scheduler_names"]
         self.simulating_method: SimulatingMethod = SimulatingMethod(d.get("simulating_method", "Trace"))
         self.simulating_method_config: Dict = d.get("simulating_method_config", dict())
+        self.multiprocessing: bool = d["multiprocessing"]
 
         self.data_source_configs: Dict[str, 'DataSourceConfig'] = dict()
         for cn, c in d["data_source_configs"].items():
@@ -112,21 +113,20 @@ class ClusterConfig:
 
     @classmethod
     def from_node_specs(cls, name: str, node_types: List[NodeType], node_type_to_count: Dict[str, int]) -> 'ClusterConfig':
-        node_types = {node_type.node_type_name: node_type for node_type in node_types}
+        node_types_dict = {node_type.node_type_name: node_type for node_type in node_types}
         nodes = []
         counter = count(0)
         for node_type_name, c in node_type_to_count.items():
             nodes.extend([Node(node_type_name, next(counter)) for _ in range(c)])
-        nodes = nodes
         GPU_types: Set[GPUType] = set()
-        for nt in node_types:
+        for nt_name, nt in node_types_dict.items():
             GPU_types.update(nt.GPU_types)
 
         GPUs = defaultdict(list)
         GPU_ID_to_node_id = dict()
         GPU_idx_counter = count(0)
         for node in nodes:
-            node_type = node_types[node.node_type_name]
+            node_type = node_types_dict[node.node_type_name]
             for GPU_type, c in node_type.GPUs.items():
                 for i in range(c):
                     GPU_type = GPUType(GPU_type)

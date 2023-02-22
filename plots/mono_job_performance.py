@@ -1,5 +1,4 @@
 import math
-import numpy as np
 from collections import defaultdict
 from typing import Tuple, Dict
 
@@ -16,80 +15,83 @@ grid_plot_legend_pot = (0.01, 0.897)
 grid_plot_top = 0.78
 
 
-def plot_mono_job_performance_bs(ax, model_name: ModelName,
-                              exec_infos: List[MonoJobExecInfo],
-                              batch_sizes: List[int]):
-    marker_legend_handles = list()
-    batch_size_set = set()
-    exec_infos = MonoJobExecInfoLoader.extract(exec_infos)
-    min_batch_size = batch_sizes[0]
-    max_batch_size = batch_sizes[-1]
-    batch_size_to_performance = dict()
-    gpu_type = GPUType.RTX_2080Ti
-    gpu_exec_infos = MonoJobExecInfoLoader.extract(exec_infos, GPU_type=gpu_type)
-    gpu_spec = get_GPU_spec(gpu_type)
-    marker_legend_handle = mlines.Line2D([], [],
-                                         color='black',
-                                         marker=gpu_spec.marker,
-                                         linestyle=gpu_spec.line,
-                                         label=f"{gpu_spec.name}")
-    ds = get_data_source()
-    # marker_legend_handles.append(marker_legend_handle)
-    for i, batch_size in enumerate(batch_sizes):
-        iteration_intervals = list()
-        for comp in range(10, 110, 10):
-            iter_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                               worker_count=1, cross_node=False, comp_req=to_normalized_comp(comp))
-            iteration_intervals.append(iter_time)
-        iteration_intervals = np.array(iteration_intervals, dtype=float)
-        iteration_intervals /= 1e9
-        # normalized_performances = np.min(iteration_intervals) / iteration_intervals
-        normalized_performances = 1 / iteration_intervals
-        batch_size_to_performance[batch_size] = normalized_performances
+# def plot_mono_job_performance_bs(ax, model_name: ModelName,
+#                                  exec_infos: List[MonoJobExecInfo],
+#                                  batch_sizes: List[int]):
+#     marker_legend_handles = list()
+#     batch_size_set = set()
+#     exec_infos = MonoJobExecInfoLoader.extract(exec_infos)
+#     min_batch_size = batch_sizes[0]
+#     max_batch_size = batch_sizes[-1]
+#     batch_size_to_performance = dict()
+#     gpu_type = GPUType.RTX_2080Ti
+#     gpu_exec_infos = MonoJobExecInfoLoader.extract(exec_infos, GPU_type=gpu_type)
+#     gpu_spec = get_GPU_spec(gpu_type)
+#     marker_legend_handle = mlines.Line2D([], [],
+#                                          color='black',
+#                                          marker=gpu_spec.marker,
+#                                          linestyle=gpu_spec.line,
+#                                          label=f"{gpu_spec.name}")
+#     ds = get_data_source()
+#     # marker_legend_handles.append(marker_legend_handle)
+#     for i, batch_size in enumerate(batch_sizes):
+#         iteration_intervals = list()
+#         for comp in range(10, 110, 10):
+#             iter_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+#                                                worker_count=1, cross_node=False, comp_req=to_normalized_comp(comp))
+#             iteration_intervals.append(iter_time)
+#         iteration_intervals = np.array(iteration_intervals, dtype=float)
+#         iteration_intervals /= 1e9
+#         # normalized_performances = np.min(iteration_intervals) / iteration_intervals
+#         normalized_performances = 1 / iteration_intervals
+#         batch_size_to_performance[batch_size] = normalized_performances
+#
+#     # maximum_performance = 0
+#     # for performances in batch_size_to_performance.values():
+#     #     maximum_performance = max(max(performances), maximum_performance)
+#
+#     for batch_size in batch_sizes:
+#         x_range = np.arange(10, 110, step=10)
+#         normalized_performances = batch_size_to_performance[batch_size] / np.max(batch_size_to_performance[batch_size])
+#         ax.plot(x_range, normalized_performances,
+#                 marker=gpu_spec.marker,
+#                 linestyle=gpu_spec.line,
+#                 linewidth='1',
+#                 label=f"{gpu_spec.name} ({batch_size})",
+#                 color=batch_size_color(batch_size))
+#
+#     color_legend_handles = list()
+#     for i, batch_size in enumerate([16, 32, 64, 128, 256, 512]):
+#         handle = mlines.Line2D([], [],
+#                                marker="s",
+#                                linestyle="None",
+#                                label=rf"bs. {i + 1} $\times$",
+#                                color=batch_size_color(batch_size))
+#         color_legend_handles.append(handle)
+#     # lg1 = ax.legend(handles=marker_legend_handles, loc=2)
+#     # lg2 = ax.legend(handles=color_legend_handles, loc=4)
+#     # ax.add_artist(lg1)
+#     # ax.add_artist(lg2)
+#     inside_ticks(ax=ax, x=True, y=True)
+#     ax.set_yticks([0, 0.5, 1])
+#     ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
+#     ax.yaxis.grid(True)
+#     ax.xaxis.grid(True)
+#
+#     # inside_ticks(ax)
+#     ax.set_xlabel(f'Comp. Resource (%)')
+#     ax.set_title(f'{model_name.name}')
+#     ax.set_ylabel('Performance')
+#     return marker_legend_handles + color_legend_handles
 
-    # maximum_performance = 0
-    # for performances in batch_size_to_performance.values():
-    #     maximum_performance = max(max(performances), maximum_performance)
 
-    for batch_size in batch_sizes:
-        x_range = np.arange(10, 110, step=10)
-        normalized_performances = batch_size_to_performance[batch_size] / np.max(batch_size_to_performance[batch_size])
-        ax.plot(x_range, normalized_performances,
-                marker=gpu_spec.marker,
-                linestyle=gpu_spec.line,
-                linewidth='1',
-                label=f"{gpu_spec.name} ({batch_size})",
-                color=batch_size_color(batch_size))
-
-    color_legend_handles = list()
-    for i, batch_size in enumerate([16, 32, 64, 128, 256, 512]):
-        handle = mlines.Line2D([], [],
-                               marker="s",
-                               linestyle="None",
-                               label=rf"bs. {i + 1} $\times$",
-                               color=batch_size_color(batch_size))
-        color_legend_handles.append(handle)
-    # lg1 = ax.legend(handles=marker_legend_handles, loc=2)
-    # lg2 = ax.legend(handles=color_legend_handles, loc=4)
-    # ax.add_artist(lg1)
-    # ax.add_artist(lg2)
-    inside_ticks(ax=ax, x=True, y=True)
-    ax.set_yticks([0, 0.5, 1])
-    ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
-    ax.yaxis.grid(True)
-    ax.xaxis.grid(True)
-
-    # inside_ticks(ax)
-    ax.set_xlabel(f'Comp. Resource (%)')
-    ax.set_title(f'{model_name.name}')
-    ax.set_ylabel('Performance')
-    return marker_legend_handles + color_legend_handles
-
-def plot_mono_job_performance(ax, model_name: ModelName,
+def plot_mono_job_performance(ax,
+                              ds: DataSource,
+                              model_name: ModelName,
                               exec_infos: List[MonoJobExecInfo],
                               batch_sizes: List[int]):
     batch_sizes = [64]
-    style_specs = { # sub_job_count to cross_node to (label, line_style, marker)
+    style_specs = {  # sub_job_count to cross_node to (label, line_style, marker)
         1: {
             False: ("1 sub-job", "solid", "o", colors[2]),
         },
@@ -117,15 +119,17 @@ def plot_mono_job_performance(ax, model_name: ModelName,
                                                  linestyle=line_style,
                                                  label=f"{label}")
             marker_legend_handles.append(marker_legend_handle)
-    def plot_spread(sub_job_count: int, cross_node: bool, maximum_performance_in_all: Optional[float]=None, return_max_performance: bool=False):
+
+    def plot_spread(sub_job_count: int, cross_node: bool, maximum_performance_in_all: Optional[float] = None,
+                    return_max_performance: bool = False):
         batch_size_to_performance = dict()
         gpu_type = GPUType.RTX_2080Ti
-        ds = get_data_source()
         for i, batch_size in enumerate(batch_sizes):
             iteration_intervals = list()
             for comp in range(10, 110, 10):
                 iter_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
-                                                   worker_count=sub_job_count, cross_node=cross_node, comp_req=to_normalized_comp(comp))
+                                                   worker_count=sub_job_count, cross_node=cross_node,
+                                                   comp_req=to_normalized_comp(comp))
                 iteration_intervals.append(iter_time)
             iteration_intervals = np.array(iteration_intervals, dtype=float)
             iteration_intervals /= 1e9
@@ -164,7 +168,6 @@ def plot_mono_job_performance(ax, model_name: ModelName,
     plot_spread(4, False, maximum_performance_in_all=maximum_performance)
     plot_spread(4, True, maximum_performance_in_all=maximum_performance)
 
-
     batch_size_legend_handles = list()
     # for i, batch_size in enumerate([16, 32, 64, 128, 256, 512]):
     #     handle = mlines.Line2D([], [],
@@ -188,101 +191,101 @@ def plot_mono_job_performance(ax, model_name: ModelName,
     return legend_handles
 
 
-def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
-                                                     worker_counts: Tuple[int, ...],
-                                                     gpu_type: GPUType,
-                                                     exec_infos: List[MonoJobExecInfo]):
-    marker_legend_handles = list()
-    batch_size_set = set()
-    StyleSpec = namedtuple(typename="StyleSpec", field_names="line marker label")
-    worker_count_to_specs = {
-        1: StyleSpec("-", "o", "1 sub-job"),
-        2: StyleSpec("--", "^", "2 sub-jobs")
-    }
-    for worker_count in worker_counts:
-        gpu_exec_infos = MonoJobExecInfoLoader.extract_gpu_type_with(exec_infos, GPU_type=gpu_type)
-        batch_sizes = MonoJobExecInfoLoader.batch_sizes(gpu_exec_infos)
-        batch_sizes = batch_sizes[2:]
-        batch_size_set = batch_size_set.union(batch_sizes)
-        x_range = np.arange(5, 105, step=5)
-        spec = worker_count_to_specs[worker_count]
-        marker_legend_handle = mlines.Line2D([], [],
-                                             color='black',
-                                             marker=spec.marker,
-                                             linestyle=spec.line,
-                                             label=spec.label)
-        ax.plot(x_range, np.arange(5, 105, step=5) / 100.,
-                linestyle=":",
-                linewidth='4',
-                color="black")
-        marker_legend_handles.append(marker_legend_handle)
-        for i, batch_size in enumerate(batch_sizes):
-            infos = MonoJobExecInfoLoader.extract(infos=gpu_exec_infos, batch_size=batch_size,
-                                                  worker_count=worker_count)
-            infos = MonoJobExecInfoLoader.sort_by_computation(infos)
-            assert len(infos) == 20
-            intervals = [info.avg_stabled_iteration_interval for info in infos]
-            min_interval = min(intervals)
-            normalized_performance = [float(min_interval / interval) for interval in intervals]
-            ax.plot(x_range, normalized_performance,
-                    marker=spec.marker,
-                    linestyle=spec.line,
-                    linewidth='1',
-                    color=batch_size_color(batch_size))
-    color_legend_handles = list()
-    batch_sizes = sorted(list(batch_size_set))
-    for batch_size in batch_sizes:
-        handle = mlines.Line2D([], [],
-                               marker="s",
-                               linestyle="None",
-                               label=f"bs. {batch_size}",
-                               color=batch_size_color(batch_size))
-        color_legend_handles.append(handle)
-    lg1 = ax.legend(handles=marker_legend_handles, loc=2)
-    lg2 = ax.legend(handles=color_legend_handles, loc=4)
-    ax.add_artist(lg1)
-    ax.add_artist(lg2)
-    inside_ticks(ax=ax, x=True, y=True)
-    ax.yaxis.grid(True)
-    ax.xaxis.grid(True)
-    ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
-
-    # inside_ticks(ax)
-    ax.set_xlabel(f'Comp. Quota (%)')
-    ax.set_title(f'{model_name.name}')
-    ax.set_ylabel('Performance')
-
-
-def plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]]):
-    original_fontsize = mpl.rcParams["font.size"]
-    mpl.rcParams.update({'font.size': 21})
-    col = grid_plot_col
-    row = grid_plot_row
-    fig, axes = plt.subplots(row, col, figsize=(32, 8))
-
-    handles = None
-    gpu_type = GPUType.RTX_2080Ti
-    for i, item in enumerate(mono_job_exec_infos.items()):
-        model_name, exec_infos = item
-        infos = MonoJobExecInfoLoader.extract(exec_infos,
-                                              train_or_inference=TrainOrInference.train,
-                                              GPU_type=gpu_type)
-        plot_mono_job_performance_with_diff_worker_count(axes[i // col, i % col],
-                                                         model_name,
-                                                         worker_counts=(1, 2),
-                                                         GPU_type=gpu_type,
-                                                         exec_infos=infos)
-        # new_handles = plot_mono_job_dist_performance(axes[i % col], model_name, exec_infos, gpu_type, comps=comps)
-        # if handles is None:
-        #     handles = new_handles
-    fig.tight_layout()
-    # lgd = fig.legend(handles=handles, loc=(0, 0.81), ncol=len(handles))
-    # lgd.get_frame().set_alpha(None)
-    # fig.suptitle(f"Training Performance with Different Computation Quotas", fontsize="x-large")
-    fig.subplots_adjust(top=grid_plot_top)
-    save_fig(fig, output_path(f"mono_job_performance_diff_quotas.pdf"))
-    mpl.rcParams.update({'font.size': original_fontsize})
-
+# def plot_mono_job_performance_with_diff_worker_count(ax, model_name: ModelName,
+#                                                      worker_counts: Tuple[int, ...],
+#                                                      gpu_type: GPUType,
+#                                                      exec_infos: List[MonoJobExecInfo]):
+#     marker_legend_handles = list()
+#     batch_size_set = set()
+#     StyleSpec = namedtuple(typename="StyleSpec", field_names="line marker label")
+#     worker_count_to_specs = {
+#         1: StyleSpec("-", "o", "1 sub-job"),
+#         2: StyleSpec("--", "^", "2 sub-jobs")
+#     }
+#     for worker_count in worker_counts:
+#         gpu_exec_infos = MonoJobExecInfoLoader.extract_gpu_type_with(exec_infos, GPU_type=gpu_type)
+#         batch_sizes = MonoJobExecInfoLoader.batch_sizes(gpu_exec_infos)
+#         batch_sizes = batch_sizes[2:]
+#         batch_size_set = batch_size_set.union(batch_sizes)
+#         x_range = np.arange(5, 105, step=5)
+#         spec = worker_count_to_specs[worker_count]
+#         marker_legend_handle = mlines.Line2D([], [],
+#                                              color='black',
+#                                              marker=spec.marker,
+#                                              linestyle=spec.line,
+#                                              label=spec.label)
+#         ax.plot(x_range, np.arange(5, 105, step=5) / 100.,
+#                 linestyle=":",
+#                 linewidth='4',
+#                 color="black")
+#         marker_legend_handles.append(marker_legend_handle)
+#         for i, batch_size in enumerate(batch_sizes):
+#             infos = MonoJobExecInfoLoader.extract(infos=gpu_exec_infos, batch_size=batch_size,
+#                                                   worker_count=worker_count)
+#             infos = MonoJobExecInfoLoader.sort_by_computation(infos)
+#             assert len(infos) == 20
+#             intervals = [info.avg_stabled_iteration_interval for info in infos]
+#             min_interval = min(intervals)
+#             normalized_performance = [float(min_interval / interval) for interval in intervals]
+#             ax.plot(x_range, normalized_performance,
+#                     marker=spec.marker,
+#                     linestyle=spec.line,
+#                     linewidth='1',
+#                     color=batch_size_color(batch_size))
+#     color_legend_handles = list()
+#     batch_sizes = sorted(list(batch_size_set))
+#     for batch_size in batch_sizes:
+#         handle = mlines.Line2D([], [],
+#                                marker="s",
+#                                linestyle="None",
+#                                label=f"bs. {batch_size}",
+#                                color=batch_size_color(batch_size))
+#         color_legend_handles.append(handle)
+#     lg1 = ax.legend(handles=marker_legend_handles, loc=2)
+#     lg2 = ax.legend(handles=color_legend_handles, loc=4)
+#     ax.add_artist(lg1)
+#     ax.add_artist(lg2)
+#     inside_ticks(ax=ax, x=True, y=True)
+#     ax.yaxis.grid(True)
+#     ax.xaxis.grid(True)
+#     ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
+#
+#     # inside_ticks(ax)
+#     ax.set_xlabel(f'Comp. Quota (%)')
+#     ax.set_title(f'{model_name.name}')
+#     ax.set_ylabel('Performance')
+#
+#
+# def plot_mono_jobs_diff_worker_count_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]]):
+#     original_fontsize = mpl.rcParams["font.size"]
+#     mpl.rcParams.update({'font.size': 21})
+#     col = grid_plot_col
+#     row = grid_plot_row
+#     fig, axes = plt.subplots(row, col, figsize=(32, 8))
+#
+#     handles = None
+#     gpu_type = GPUType.RTX_2080Ti
+#     for i, item in enumerate(mono_job_exec_infos.items()):
+#         model_name, exec_infos = item
+#         infos = MonoJobExecInfoLoader.extract(exec_infos,
+#                                               train_or_inference=TrainOrInference.train,
+#                                               GPU_type=gpu_type)
+#         plot_mono_job_performance_with_diff_worker_count(axes[i // col, i % col],
+#                                                          model_name,
+#                                                          worker_counts=(1, 2),
+#                                                          GPU_type=gpu_type,
+#                                                          exec_infos=infos)
+#         # new_handles = plot_mono_job_dist_performance(axes[i % col], model_name, exec_infos, gpu_type, comps=comps)
+#         # if handles is None:
+#         #     handles = new_handles
+#     fig.tight_layout()
+#     # lgd = fig.legend(handles=handles, loc=(0, 0.81), ncol=len(handles))
+#     # lgd.get_frame().set_alpha(None)
+#     # fig.suptitle(f"Training Performance with Different Computation Quotas", fontsize="x-large")
+#     fig.subplots_adjust(top=grid_plot_top)
+#     save_fig(fig, output_path(f"mono_job_performance_diff_quotas.pdf"))
+#     mpl.rcParams.update({'font.size': original_fontsize})
+#
 
 def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJobExecInfo]],
                                show_model_batch_sizes: Dict[ModelName, List[int]],
@@ -295,10 +298,11 @@ def plot_mono_jobs_performance(mono_job_exec_infos: Dict[ModelName, List[MonoJob
     fig, axes = plt.subplots(row, col, figsize=(32, 8))
 
     handles = None
+    ds = get_data_source()
     for i, model_name in enumerate(model_sort):
         batch_sizes = show_model_batch_sizes[model_name]
         exec_infos = mono_job_exec_infos[model_name]
-        new_handles = plot_mono_job_performance(axes[i // col, i % col], model_name, exec_infos, batch_sizes)
+        new_handles = plot_mono_job_performance(axes[i // col, i % col], ds, model_name, exec_infos, batch_sizes)
         if handles is None or len(new_handles) > len(handles):
             handles = new_handles
     lgd = fig.legend(handles=handles, loc=grid_plot_legend_pot, ncol=len(handles))
@@ -818,11 +822,14 @@ def plot_mono_job_spread_performance(ax,
         original_comp_req = to_normalized_comp(original_comp_)
         base_comp_req = original_comp_req // bar_meta.worker_count
         target_comp_req = base_comp_req
-        original_iteration_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+        original_iteration_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size,
+                                                         GPU_type=gpu_type,
                                                          worker_count=original_bar_meta.worker_count,
-                                                         cross_node=original_bar_meta.cross_node, comp_req=original_comp_req)
+                                                         cross_node=original_bar_meta.cross_node,
+                                                         comp_req=original_comp_req)
         while target_comp_req <= CompCapacity:
-            curr_iteration_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=gpu_type,
+            curr_iteration_time = ds.iteration_time_nano(model_name=model_name, batch_size=batch_size,
+                                                         GPU_type=gpu_type,
                                                          worker_count=bar_meta.worker_count,
                                                          cross_node=bar_meta.cross_node, comp_req=target_comp_req)
             if curr_iteration_time > original_iteration_time:

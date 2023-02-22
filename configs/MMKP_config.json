@@ -3,6 +3,7 @@
   "use_default_license": true,
   "session_id": "trace",
   "simulating_method": "Trace",
+  "multiprocessing": true,
   "simulating_method_config": {
     "repeat": 1
   },
@@ -199,64 +200,43 @@
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
     {
-      "name": "MMKP_strict",
+      "name": "MMKP",
       "scheduler_enum": "MMKP",
       "config": {
-        "strict": true,
-        "priority_type": "SRSF",
-        "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization",
-        "splitting_saturate_factor": 0.5,
-        "direct_saturate_factor": 2
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "partition_size": 8
       }
     },
     {
-      "name": "MMKP_strict_no_split",
+      "name": "MMKP_no_spread",
       "scheduler_enum": "MMKP",
       "config": {
-        "use_split": false,
-        "strict": true,
-        "priority_type": "SRSF",
-        "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization",
-        "splitting_saturate_factor": 0.5,
-        "direct_saturate_factor": 2
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "partition_size": 8
       }
     },
     {
-      "name": "MMKP_best_effort",
+      "name": "MMKP_RR_partition_distribution",
       "scheduler_enum": "MMKP",
       "config": {
-        "strict": false,
-        "priority_type": "SRSF",
-        "solver_enum": "MMKP",
-        "profit_enum": "ComprehensiveUtilization"
+        "use_spread": true,
+        "partition_strategy": "round",
+        "job_distributing_strategy": "round",
+        "partition_size": 8
       }
     },
     {
-      "name": "RoundRobin_strict",
+      "name": "RoundRobin",
       "scheduler_enum": "RoundRobin",
-      "config": {
-        "priority_type": "FCFS",
-        "strict": true
-      }
-    },
-    {
-      "name": "RoundRobin_best_effort",
-      "scheduler_enum": "RoundRobin",
-      "config": {
-        "priority_type": "FCFS",
-        "strict": false
-      }
+      "config": {}
     },
     {
       "name": "KubeShare",
       "scheduler_enum": "KubeShare",
-      "config": {}
-    },
-    {
-      "name": "Optimus",
-      "scheduler_enum": "Optimus",
       "config": {}
     },
     {
@@ -281,6 +261,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "Kubernetes"
+    "RoundRobin", "Kubernetes"
   ]
 }

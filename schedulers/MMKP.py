@@ -8,7 +8,7 @@ from log import info
 from object import GPUType, CompCapacity, Job, Task, PriorityType
 from profit import get_profit_calculator
 from scheduler import Scheduler
-from sorter import Sorter
+from .sorter import Sorter
 from .solver import do_MMKP_solve_SC, \
     SolverParametersSC, do_partition_solve, SolverResult, \
     PartitionSolverParameters, do_job_distribution_solve, JobDistributionSolverParameters
@@ -65,16 +65,14 @@ class JobVariant:
 class MMKPScheduler(Scheduler):
 
     def _init_config(self):
-        self.use_split = self.config.get("use_split", True)
+        self.use_spread = self.config.get("use_spread", True)
         self.partition_strategy = self.config.get("partition_strategy", "heuristic")  # "heuristic", "round"
         self.partition_size = self.config.get("partition_size", 8)
         self.job_distributing_strategy = self.config.get("job_distributing_strategy",
                                                          "heuristic")  # "heuristic", "round"
-        self.job_priority_policy = self.config.get("priority", "FIFO")  # "FIFO", "SRTF"
         self.GPU_type = GPUType.RTX_2080Ti
+        self.job_priority_policy = self.config.get("priority", "FCFS")  # "FCFS", "SRTF"
         self.timeout = self.config.get("timeout", 30)
-
-        self.selector = self.config.get("selector", "balance")
 
     def reuse_assignments(self):
         return self.cluster.assignments.clone(), MMKPScheduler.build_statistics()
@@ -171,7 +169,7 @@ class MMKPScheduler(Scheduler):
 
     def job_priority_sort(self, job_IDs: List[str]) -> List[str]:
         jobs = list(self.cluster.get_job(job_ID=job_ID) for job_ID in job_IDs)
-        if self.job_priority_policy == "FIFO":
+        if self.job_priority_policy == "FCFS":
             return Sorter.sort(jobs=jobs, data_source=self.data_source, priority_type=PriorityType.FCFS)
         assert False
 
@@ -207,7 +205,7 @@ class MMKPScheduler(Scheduler):
                 variants.append(v)
             return variants
 
-        job_variants: List[JobVariant] = list(chain(*generate_job_variants(job_ID=job_ID) for job_ID in job_IDs))
+        job_variants: List[JobVariant] = list(chain(*[generate_job_variants(job_ID=job_ID) for job_ID in job_IDs]))
 
         def precalculate_job_variant_profits(job_variants_: List[JobVariant]) -> Dict[str, float]:
             job_variant_profits_ = dict()
@@ -289,7 +287,10 @@ class MMKPScheduler(Scheduler):
                 solver_params_ = prepare_solver_params(job_variants_)
                 return do_MMKP_solve_SC(solver_params=solver_params_)
 
-            for max_worker_count in (4, 2, 1):
+            max_worker_counts = (4, 2, 1)
+            if not self.use_spread:
+                max_worker_counts = (1, )
+            for max_worker_count in max_worker_counts:
                 solver_result_ = solve_for_max_worker_count(max_worker_count_=max_worker_count)
                 info(f"MMKP scheduler starts solving with maximum worker count = {max_worker_count}.")
                 if solver_result_ is not None:
@@ -333,8 +334,8 @@ class MMKPScheduler(Scheduler):
         assignments = build_assignments(solver_result)
 
         def extract_unassigned_job_IDs(curr_assignments: Assignments):
-            assigned_job_IDs = set(curr_assignments.job_ID_to_task_assignments.keys())
-            unassigned_job_IDs_ = list(set(job_IDs).difference(assigned_job_IDs))
+            assigned_job_IDs_ = set(curr_assignments.job_ID_to_task_assignments.keys())
+            unassigned_job_IDs_ = list(set(job_IDs).difference(assigned_job_IDs_))
             unassigned_job_IDs_ = self.job_priority_sort(unassigned_job_IDs_)
             return unassigned_job_IDs_
 
@@ -347,23 +348,23 @@ class MMKPScheduler(Scheduler):
 
             refilled_GPU_ID_to_task_assignments = curr_assignments.GPU_ID_to_task_assignments
             for v in unassigned_job_variants:
-                comp = v.comp
+                max_comp = v.comp
                 _, mem = self.data_source.get_job_task_memory(job_ID=v.job_ID, worker_count=v.worker_count)
-                target_GPU_ID = None
-                GPU_resource_capacity_tuples = [(GPU_ID, comp_cap, mem_cap) for GPU_ID, (comp_cap, mem_cap) in
-                                                GPU_resource_capacity.items()]
-                GPU_resource_capacity_tuples.sort(key=lambda t_: t_[1])
-                for t in GPU_resource_capacity_tuples:
-                    GPU_ID, comp_cap, mem_cap = t
-                    if comp < comp_cap and mem < mem_cap:
-                        target_GPU_ID = GPU_ID
+                best_fit_GPU_ID = None
+                best_fit_GPU_comp_diff = None
+                for GPU_ID, (comp_cap, mem_cap) in GPU_resource_capacity:
+                    comp_diff = abs(max_comp - comp_cap)
+                    if best_fit_GPU_ID is None or \
+                            (mem < mem_cap and comp_diff < best_fit_GPU_comp_diff):
+                        best_fit_GPU_ID = GPU_ID
                         break
-                if target_GPU_ID is None:
+                if best_fit_GPU_ID is None:
                     continue
-                comp_cap, mem_cap = GPU_resource_capacity[target_GPU_ID]
-                GPU_resource_capacity[target_GPU_ID] = (comp_cap - comp, mem_cap - mem)
-                refilled_GPU_ID_to_task_assignments[target_GPU_ID].add(TaskAssignment(
-                    GPU_ID=target_GPU_ID,
+                comp_cap, mem_cap = GPU_resource_capacity[best_fit_GPU_ID]
+                comp = max(0, comp_cap - max_comp)
+                GPU_resource_capacity[best_fit_GPU_ID] = (comp, mem_cap - mem)
+                refilled_GPU_ID_to_task_assignments[best_fit_GPU_ID].add(TaskAssignment(
+                    GPU_ID=best_fit_GPU_ID,
                     GPU_type=self.GPU_type,
                     task=Task(job_ID=v.job_ID, task_idx=0),
                     comp_req=comp,

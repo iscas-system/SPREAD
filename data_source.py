@@ -48,7 +48,7 @@ class MonoJobExecInfo:
         self.__parse_raw_json()
 
     def __parse_raw_json(self):
-        self.iteration_time_nano: int = self.raw_json["iteration_time_nano"]
+        self.iteration_count: int = self.raw_json["iteration_count"]
         self.iteration_intervals: List[int] = self.raw_json["iteration_intervals"]
         self.total_time_ns: int = self.raw_json["total_time_ns"]
         self.mem_infos: List[List[int]] = self.raw_json["mem_infos"]
@@ -132,7 +132,7 @@ class MonoJobExecInfoLoader:
                     if time_str < old_info.time_str:
                         continue
                 exec_infos[exec_id] = exec_info
-            print(f"load over for {session_dir}, {exec_infos.values()}")
+            info(f"load over for {session_dir}, {exec_infos.values()}")
             d[model_name].extend(exec_infos.values())
         return d
 
@@ -186,6 +186,7 @@ class DataSource:
             enabled_GPU_types = set(GPUType)
         self.data_source_config: DataSourceConfig = data_source_config
         self.enabled_GPU_types: List[GPUType] = list(enabled_GPU_types)
+        self.__init_cache_dfs()
         self.__init_mono_job_data()
         self.__init_job_data()
 
@@ -215,7 +216,7 @@ class DataSource:
                 break
             job_ID = f"job_ID_{row['jobID']}"
             submit_time = row["submit_time"] if not self.data_source_config.submit_at_beginning else 0
-            submit_time_nano = int(1e9 * submit_time) # to nano
+            submit_time_nano = int(1e9 * submit_time)  # to nano
             submit_time_nano *= self.data_source_config.submit_scale_factor
             run_time = row["run_time"]
             run_time = DataSource.run_time_converter(run_time=run_time)
@@ -268,84 +269,128 @@ class DataSource:
             plan_GPUs_size[job_spec.plan_GPU] += 1
         info(plan_GPUs_size.__str__())
 
+    def __init_cache_dfs(self):
+        self.iteration_time_cache_df = pd.DataFrame(
+            columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_time_nano",
+                     "comp"])
+        self.iteration_time_cache_df_index = ["model_name", "comp", "batch_size", "worker_count", "GPU_type", "cross_node"]
+        self.iteration_time_cache_df = self.iteration_time_cache_df.set_index(self.iteration_time_cache_df_index)
+        self.model_maximized_performance_comps_cache = pd.DataFrame(
+            columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_time_nano",
+                     "comp"])
+        self.model_maximized_performance_comps_cache_index = ["model_name", "batch_size", "GPU_type", "worker_count", "cross_node"]
+        self.model_maximized_performance_comps_cache = self.model_maximized_performance_comps_cache.set_index(self.model_maximized_performance_comps_cache_index)
+
     def get_job_spec(self, job_ID: str) -> JobSpec:
         return self.job_specs_dict[job_ID]
 
     def get_exec_info(self, model_name: ModelName, batch_size: int, GPU_type: GPUType, worker_count: int,
-                      computation_proportion: int):
+                      computation_proportion: int, cross_node: bool):
         batch_size = batch_size // worker_count
         info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
-                                             GPU_type=GPU_type, batch_size=batch_size,
-                                             computation_proportion=computation_proportion, worker_count=worker_count)
+                                             GPU_type=GPU_type,
+                                             batch_size=batch_size,
+                                             computation_proportion=computation_proportion,
+                                             worker_count=worker_count,
+                                             cross_node=cross_node)
         assert len(info) == 1
         return info[0]
 
-    def iteration_time_nano(self, model_name: ModelName,
+    def iteration_time_nano(self,
+                            model_name: ModelName,
                             batch_size: int,
                             GPU_type: GPUType,
                             worker_count: int,
                             cross_node: bool,
                             comp_req: float) -> Optional[int]:
-        batch_size = batch_size // worker_count
-        computation_proportion = int(comp_req * (100 // CompCapacity))
-        info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
-                                             GPU_type=GPU_type,
-                                             batch_size=batch_size,
-                                             computation_proportion=computation_proportion,
-                                             cross_node=cross_node,
-                                             worker_count=worker_count)
-        if len(info) == 1:
-            return info[0].avg_stabled_iteration_interval
-        infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
-                                              batch_size=batch_size,
-                                              GPU_type=GPU_type,
-                                              cross_node=cross_node,
-                                              worker_count=worker_count)
-        if len(infos) == 0:
-            return None
-        factor = 1.0
-        if len(infos) == 0:
-            info_base = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
-                                                      GPU_type=GPUType.RTX_2080Ti, worker_count=1)
-            info_self = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
-                                                      GPU_type=GPU_type, worker_count=1)
-            assert len(info_base) == 1 and len(info_self) == 1
-            infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
+        # find in cache first
+        df = self.iteration_time_cache_df
+        filtered = df.query(
+            f"model_name == '{model_name.name}' & "
+            f"comp == {comp_req} & "
+            f"batch_size == {batch_size} & "
+            f"GPU_type == '{GPU_type.name}' & "
+            f"worker_count == {worker_count} & "
+            f"cross_node == {cross_node}"
+        )
+        # filtered = df[
+        #     (df["model_name"] == model_name.name) &
+        #     (df["comp"] == comp_req) &
+        #     (df["batch_size"] == batch_size) &
+        #     (df["GPU_type"] == GPU_type.name) &
+        #     (df["worker_count"] == worker_count) &
+        #     (df["cross_node"] == cross_node)
+        #     ]
+        assert len(filtered) <= 1
+        if len(filtered) == 1:
+            d = filtered.iloc[0].to_dict()
+            return d["iteration_time_nano"]
+
+        def calculate_iteration_nano():
+            worker_batch_size = batch_size // worker_count
+            computation_proportion = int(comp_req * (100 // CompCapacity))
+            info_ = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
                                                   GPU_type=GPU_type,
+                                                  batch_size=worker_batch_size,
+                                                  computation_proportion=computation_proportion,
+                                                  cross_node=cross_node,
                                                   worker_count=worker_count)
-            factor = info_self[0].avg_stabled_iteration_interval / info_base[0].avg_stabled_iteration_interval
-        infos = MonoJobExecInfoLoader.sort_by_computation(infos)
-        greater_idx = 0
-        for i, info in enumerate(infos):
-            if info.computation_proportion > computation_proportion:
-                greater_idx = i
-                break
-        less_idx = greater_idx - 1 if greater_idx > 0 else 0
-        if less_idx == greater_idx:
-            base_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
-                                                              GPU_type=GPU_type, worker_count=1,
-                                                              computation_proportion=50)
-            self_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
-                                                              GPU_type=GPU_type, worker_count=worker_count,
-                                                              cross_node=cross_node, computation_proportion=50)
-            assert len(base_info_comp_50) == 1 and len(base_info_comp_50) == 1
-            comm_overhead = self_info_comp_50[0].avg_stabled_iteration_interval - base_info_comp_50[
-                0].avg_stabled_iteration_interval
-            base_info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size,
-                                                      GPU_type=GPU_type, worker_count=1,
-                                                      computation_proportion=computation_proportion)
-            assert len(base_info) == 1
-            with_overhead = base_info[0].avg_stabled_iteration_interval + comm_overhead
-            return with_overhead
-        less_comp = infos[less_idx].computation_proportion
-        greater_comp = infos[greater_idx].computation_proportion
-        iteration_interval_diff = infos[greater_idx].avg_stabled_iteration_interval - infos[
-            less_idx].avg_stabled_iteration_interval
-        comp_diff = greater_comp - less_comp
-        k = iteration_interval_diff / comp_diff
-        iteration_interval = infos[
-                                 less_idx].avg_stabled_iteration_interval + k * (computation_proportion - less_comp)
-        return int(iteration_interval * factor)
+            if len(info_) == 1:
+                return info_[0].avg_stabled_iteration_interval
+            infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
+                                                  batch_size=worker_batch_size,
+                                                  GPU_type=GPU_type,
+                                                  cross_node=cross_node,
+                                                  worker_count=worker_count)
+            assert len(infos) != 0
+            factor = 1.0
+            infos = MonoJobExecInfoLoader.sort_by_computation(infos)
+            greater_idx = 0
+            for i, info_ in enumerate(infos):
+                if info_.computation_proportion > computation_proportion:
+                    greater_idx = i
+                    break
+            less_idx = greater_idx - 1 if greater_idx > 0 else 0
+            if less_idx == greater_idx:
+                base_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=worker_batch_size,
+                                                                  GPU_type=GPU_type, worker_count=1,
+                                                                  computation_proportion=50)
+                self_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=worker_batch_size,
+                                                                  GPU_type=GPU_type, worker_count=worker_count,
+                                                                  cross_node=cross_node, computation_proportion=50)
+                assert len(base_info_comp_50) == 1 and len(base_info_comp_50) == 1
+                comm_overhead = self_info_comp_50[0].avg_stabled_iteration_interval - base_info_comp_50[
+                    0].avg_stabled_iteration_interval
+                base_info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=worker_batch_size,
+                                                          GPU_type=GPU_type, worker_count=1,
+                                                          computation_proportion=computation_proportion)
+                assert len(base_info) == 1
+                with_overhead = base_info[0].avg_stabled_iteration_interval + comm_overhead
+                return with_overhead
+            less_comp = infos[less_idx].computation_proportion
+            greater_comp = infos[greater_idx].computation_proportion
+            iteration_interval_diff = infos[greater_idx].avg_stabled_iteration_interval - infos[
+                less_idx].avg_stabled_iteration_interval
+            comp_diff = greater_comp - less_comp
+            k = iteration_interval_diff / comp_diff
+            iteration_interval = infos[
+                                     less_idx].avg_stabled_iteration_interval + k * (computation_proportion - less_comp)
+            return int(iteration_interval * factor)
+
+        iteration_time_nano = calculate_iteration_nano()
+        new_record = pd.DataFrame([{
+            "model_name": model_name.name,
+            "comp": comp_req,
+            "GPU_type": GPU_type.name,
+            "batch_size": batch_size,
+            "worker_count": worker_count,
+            "cross_node": cross_node,
+            "iteration_time_nano": iteration_time_nano
+        }]).set_index(self.iteration_time_cache_df_index)
+        df = pd.concat([self.iteration_time_cache_df, new_record])
+        self.iteration_time_cache_df = df
+
+        return iteration_time_nano
 
     def computation_utilization(self, model_name: ModelName,
                                 batch_size: int,
@@ -387,7 +432,8 @@ class DataSource:
                                   batch_size=job_spec.batch_size,
                                   GPU_type=GPUType.RTX_2080Ti,
                                   worker_count=worker_count,
-                                  computation_proportion=50)
+                                  computation_proportion=50,
+                                  cross_node=False)
         normalized_memory = to_normalized_memory(info.most_memory_consumption)
         return info.most_memory_consumption, normalized_memory
 
@@ -419,22 +465,25 @@ class DataSource:
         )
         return iteration_time
 
-    model_maximized_performance_comps_cache = pd.DataFrame(
-        columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_time_nano",
-                 "comp"])  # model_name -> batch_size -> worker_count -> cross_node -> (performance, comp)
-
     def model_maximized_performance_comp(self, model_name: ModelName, batch_size: int, GPU_type: GPUType,
                                          worker_count: int, cross_node: bool) -> Tuple[int, int]:
         model_name_str = model_name.name
         GPU_type_str = GPU_type.name
         df = self.model_maximized_performance_comps_cache
-        filtered = df[
-            (df["model_name"] == model_name_str) &
-            (df["GPU_type"] == GPU_type_str) &
-            (df["batch_size"] == batch_size) &
-            (df["worker_count"] == worker_count) &
-            (df["cross_node"] == cross_node)
-            ]
+        filtered = df.query(
+            f"model_name == '{model_name_str}' & "
+            f"GPU_type == '{GPU_type_str}' &"
+            f"batch_size == {batch_size} &"
+            f"worker_count == {worker_count} &"
+            f"cross_node == {cross_node}"
+        )
+        # filtered = df[
+        #     (df["model_name"] == model_name_str) &
+        #     (df["GPU_type"] == GPU_type_str) &
+        #     (df["batch_size"] == batch_size) &
+        #     (df["worker_count"] == worker_count) &
+        #     (df["cross_node"] == cross_node)
+        #     ]
         assert len(filtered) <= 1
         if len(filtered) == 1:
             d = filtered.iloc[0].to_dict()
@@ -456,24 +505,25 @@ class DataSource:
             maximized_perf_comp = CompCapacity
 
         maximized_perf_iteration_time_nano = self.iteration_time_nano(model_name=model_name, batch_size=batch_size,
-                                                                  GPU_type=GPU_type,
-                                                                  comp_req=maximized_perf_comp,
-                                                                  worker_count=worker_count, cross_node=cross_node)
+                                                                      GPU_type=GPU_type,
+                                                                      comp_req=maximized_perf_comp,
+                                                                      worker_count=worker_count, cross_node=cross_node)
         new_record = pd.DataFrame([{
             "model_name": model_name_str,
-            "GPU_type": GPU_type,
+            "GPU_type": GPU_type.name,
             "batch_size": batch_size,
             "worker_count": worker_count,
-            "cross_node": cross_node, 
+            "cross_node": cross_node,
             "iteration_time_nano": maximized_perf_iteration_time_nano,
             "comp": maximized_perf_comp
-        }])
+        }]).set_index(self.model_maximized_performance_comps_cache_index)
         df = pd.concat([self.model_maximized_performance_comps_cache, new_record])
         self.model_maximized_performance_comps_cache = df
 
         return maximized_perf_comp, maximized_perf_iteration_time_nano
 
-    def job_maximized_performance_comp(self, job_ID: str, GPU_type: GPUType, worker_count: int, cross_node: bool) -> Tuple[int, int]:
+    def job_maximized_performance_comp(self, job_ID: str, GPU_type: GPUType, worker_count: int, cross_node: bool) -> \
+            Tuple[int, int]:
         job_spec = self.job_specs_dict[job_ID]
         return self.model_maximized_performance_comp(model_name=job_spec.model_name, batch_size=job_spec.batch_size,
                                                      GPU_type=GPU_type, worker_count=worker_count,
@@ -491,105 +541,105 @@ class DataSource:
         )
         return utilization
 
-    @staticmethod
-    def plan_gpu_converter_ali_fix(plan_GPU: int):
-        convert_dict: Dict[int, List] = {
-            100: [65, 70, 75, 80, 85, 90, 95, 100, 100, 100, 100],
-            50: [40, 45, 50, 55, 60],
-            25: [15, 20, 25, 30, 35],
-            20: [10, 15, 20, 25, 30],
-            10: [5, 10, 15, 20],
-            5: [5, 10, 15]
-        }
-        if plan_GPU in convert_dict:
-            c = np.random.choice(convert_dict[plan_GPU])
-            return c
-        if plan_GPU % 5 != 0:
-            return np.random.choice(np.arange(5, 105, 5))
-        return plan_GPU
+    # @staticmethod
+    # def plan_gpu_converter_ali_fix(plan_GPU: int):
+    #     convert_dict: Dict[int, List] = {
+    #         100: [65, 70, 75, 80, 85, 90, 95, 100, 100, 100, 100],
+    #         50: [40, 45, 50, 55, 60],
+    #         25: [15, 20, 25, 30, 35],
+    #         20: [10, 15, 20, 25, 30],
+    #         10: [5, 10, 15, 20],
+    #         5: [5, 10, 15]
+    #     }
+    #     if plan_GPU in convert_dict:
+    #         c = np.random.choice(convert_dict[plan_GPU])
+    #         return c
+    #     if plan_GPU % 5 != 0:
+    #         return np.random.choice(np.arange(5, 105, 5))
+    #     return plan_GPU
 
-    @staticmethod
-    def plan_gpu_converter_ali_fix_new(plan_GPU: int):
-        convert_normal_distributions = [
-            (0.36, [55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 100, 100, 95, 90, 85, 80, 75, 70, 65, 60, 55]),
-            (0.36 + 0.26, [5, 10, 15, 20, 25, 25, 25, 30, 35, 40, 45]),
-            (0.36 + 0.26 + 0.16, [30, 35, 40, 45, 50, 50, 50, 55, 60, 65, 70]),
-            (0.36 + 0.26 + 0.16 + 0.15, [10, 10, 10, 5, 10, 10, 10, 15, 20, 25, 30]),
-            (0.36 + 0.26 + 0.16 + 0.15 + 0.02, [5, 10, 15, 20, 20, 20, 25, 30, 35]),
-            (1, [200])
-        ]
-        r = np.random.rand()
-        dist_idx = None
-        for idx in range(len(convert_normal_distributions)):
-            if idx == 0:
-                continue
-            if idx == 1 and r < convert_normal_distributions[0][0]:
-                dist_idx = 0
-                break
-            if convert_normal_distributions[idx - 1][0] < r <= convert_normal_distributions[idx][0]:
-                dist_idx = idx
-                break
-        assert dist_idx is not None
-        return DataSource.random_normal_idx(convert_normal_distributions[dist_idx][-1])
-
-    @staticmethod
-    def plan_gpu_converter_phi(plan_GPU: int):
-        convert_normal_distributions = [
-            (0.36, [100]),
-            (0.36 + 0.26, [25, 25, 25]),
-            (0.36 + 0.26 + 0.16, [50]),
-            (0.36 + 0.26 + 0.16 + 0.15, [10]),
-            (0.36 + 0.26 + 0.16 + 0.15 + 0.02, [20]),
-            (1, [200])
-        ]
-        r = np.random.rand()
-        dist_idx = None
-        for idx in range(len(convert_normal_distributions)):
-            if idx == 0:
-                continue
-            if idx == 1 and r < convert_normal_distributions[0][0]:
-                dist_idx = 0
-                break
-            if convert_normal_distributions[idx - 1][0] < r <= convert_normal_distributions[idx][0]:
-                dist_idx = idx
-                break
-        assert dist_idx is not None
-        return DataSource.random_normal_idx(convert_normal_distributions[dist_idx][-1])
+    # @staticmethod
+    # def plan_gpu_converter_ali_fix_new(plan_GPU: int):
+    #     convert_normal_distributions = [
+    #         (0.36, [55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 100, 100, 95, 90, 85, 80, 75, 70, 65, 60, 55]),
+    #         (0.36 + 0.26, [5, 10, 15, 20, 25, 25, 25, 30, 35, 40, 45]),
+    #         (0.36 + 0.26 + 0.16, [30, 35, 40, 45, 50, 50, 50, 55, 60, 65, 70]),
+    #         (0.36 + 0.26 + 0.16 + 0.15, [10, 10, 10, 5, 10, 10, 10, 15, 20, 25, 30]),
+    #         (0.36 + 0.26 + 0.16 + 0.15 + 0.02, [5, 10, 15, 20, 20, 20, 25, 30, 35]),
+    #         (1, [200])
+    #     ]
+    #     r = np.random.rand()
+    #     dist_idx = None
+    #     for idx in range(len(convert_normal_distributions)):
+    #         if idx == 0:
+    #             continue
+    #         if idx == 1 and r < convert_normal_distributions[0][0]:
+    #             dist_idx = 0
+    #             break
+    #         if convert_normal_distributions[idx - 1][0] < r <= convert_normal_distributions[idx][0]:
+    #             dist_idx = idx
+    #             break
+    #     assert dist_idx is not None
+    #     return DataSource.random_normal_idx(convert_normal_distributions[dist_idx][-1])
+    #
+    # @staticmethod
+    # def plan_gpu_converter_phi(plan_GPU: int):
+    #     convert_normal_distributions = [
+    #         (0.36, [100]),
+    #         (0.36 + 0.26, [25, 25, 25]),
+    #         (0.36 + 0.26 + 0.16, [50]),
+    #         (0.36 + 0.26 + 0.16 + 0.15, [10]),
+    #         (0.36 + 0.26 + 0.16 + 0.15 + 0.02, [20]),
+    #         (1, [200])
+    #     ]
+    #     r = np.random.rand()
+    #     dist_idx = None
+    #     for idx in range(len(convert_normal_distributions)):
+    #         if idx == 0:
+    #             continue
+    #         if idx == 1 and r < convert_normal_distributions[0][0]:
+    #             dist_idx = 0
+    #             break
+    #         if convert_normal_distributions[idx - 1][0] < r <= convert_normal_distributions[idx][0]:
+    #             dist_idx = idx
+    #             break
+    #     assert dist_idx is not None
+    #     return DataSource.random_normal_idx(convert_normal_distributions[dist_idx][-1])
 
     @staticmethod
     def plan_gpu_converter_ali_original(plan_GPU: int):
         return plan_GPU
 
-    @staticmethod
-    def plan_gpu_converter_uniform(plan_GPU: int):
-        distribution = list(reversed(np.arange(5, 105, 5)))
-        distribution += [200]
-        return np.random.choice(distribution)
-
-    @staticmethod
-    def random_normal_idx(distribution: List, std: Optional[float] = None):
-        c = len(distribution)
-        indices = np.arange(0, c)
-        mean = np.mean(indices)
-        if std is None:
-            std = 2
-        idx = np.random.normal(mean, std)
-        idx = int(np.around(idx))
-        if idx < 0:
-            idx = 0
-        if idx >= c:
-            idx = c - 1
-        return distribution[idx]
-
-    @staticmethod
-    def plan_gpu_converter_low(plan_GPU: int):
-        distribution = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
-        return DataSource.random_normal_idx(distribution, std=3)
-
-    @staticmethod
-    def plan_gpu_converter_high(plan_GPU: int):
-        distribution = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
-        return DataSource.random_normal_idx(distribution, std=3)
+    # @staticmethod
+    # def plan_gpu_converter_uniform(plan_GPU: int):
+    #     distribution = list(reversed(np.arange(5, 105, 5)))
+    #     distribution += [200]
+    #     return np.random.choice(distribution)
+    #
+    # @staticmethod
+    # def random_normal_idx(distribution: List, std: Optional[float] = None):
+    #     c = len(distribution)
+    #     indices = np.arange(0, c)
+    #     mean = np.mean(indices)
+    #     if std is None:
+    #         std = 2
+    #     idx = np.random.normal(mean, std)
+    #     idx = int(np.around(idx))
+    #     if idx < 0:
+    #         idx = 0
+    #     if idx >= c:
+    #         idx = c - 1
+    #     return distribution[idx]
+    #
+    # @staticmethod
+    # def plan_gpu_converter_low(plan_GPU: int):
+    #     distribution = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
+    #     return DataSource.random_normal_idx(distribution, std=3)
+    #
+    # @staticmethod
+    # def plan_gpu_converter_high(plan_GPU: int):
+    #     distribution = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 200]
+    #     return DataSource.random_normal_idx(distribution, std=3)
 
     @staticmethod
     def plan_gpu_converter_comp_all_100(plan_GPU: int):
@@ -597,23 +647,21 @@ class DataSource:
 
     @staticmethod
     def run_time_converter(run_time: int):
-        # while run_time < 30 * 60:
-        #     run_time *= 2
         return run_time
 
     @staticmethod
     def plan_gpu_converter(comp_distribution: str, plan_GPU: int) -> int:
         return {
             "all_100": DataSource.plan_gpu_converter_comp_all_100,
-            "ali": DataSource.plan_gpu_converter_ali_original,
-            "ali_fix": DataSource.plan_gpu_converter_ali_fix,
-            "ali_uni": DataSource.plan_gpu_converter_ali_fix,
-            "uniform": DataSource.plan_gpu_converter_uniform,
-            "low": DataSource.plan_gpu_converter_low,
-            "high": DataSource.plan_gpu_converter_high,
-            "ali_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
-            "phi_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
-            "phi": DataSource.plan_gpu_converter_phi
+            "original": DataSource.plan_gpu_converter_ali_original,
+            # "ali_fix": DataSource.plan_gpu_converter_ali_fix,
+            # "ali_uni": DataSource.plan_gpu_converter_ali_fix,
+            # "uniform": DataSource.plan_gpu_converter_uniform,
+            # "low": DataSource.plan_gpu_converter_low,
+            # "high": DataSource.plan_gpu_converter_high,
+            # "ali_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
+            # "phi_fix_new": DataSource.plan_gpu_converter_ali_fix_new,
+            # "phi": DataSource.plan_gpu_converter_phi
         }[comp_distribution](plan_GPU)
 
 
@@ -623,19 +671,19 @@ def do_test():
                    enabled_GPU_types={GPUType.RTX_2080Ti})
     print(d.job_specs_dict["job_ID_103"].to_dict())
     comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
-                                              GPU_type=GPUType.RTX_2080Ti, worker_count=1, cross_node=False)
+                                                 GPU_type=GPUType.RTX_2080Ti, worker_count=1, cross_node=False)
     print(comp)
     comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
-                                              GPU_type=GPUType.RTX_2080Ti, worker_count=2, cross_node=False)
+                                                 GPU_type=GPUType.RTX_2080Ti, worker_count=2, cross_node=False)
     print(comp)
     comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
-                                              GPU_type=GPUType.RTX_2080Ti, worker_count=2, cross_node=True)
+                                                 GPU_type=GPUType.RTX_2080Ti, worker_count=2, cross_node=True)
     print(comp)
     comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
-                                              GPU_type=GPUType.RTX_2080Ti, worker_count=4, cross_node=False)
+                                                 GPU_type=GPUType.RTX_2080Ti, worker_count=4, cross_node=False)
     print(comp)
     comp, _ = d.model_maximized_performance_comp(model_name=ModelName.EfficientNet, batch_size=64,
-                                              GPU_type=GPUType.RTX_2080Ti, worker_count=4, cross_node=True)
+                                                 GPU_type=GPUType.RTX_2080Ti, worker_count=4, cross_node=True)
     print(comp)
     print(d.model_maximized_performance_comps_cache)
     # e = DataSource(data_source_config=c.data_source_configs["data_source_phi_uni"],
