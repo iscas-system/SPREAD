@@ -39,7 +39,7 @@ class Scheduler(ABC):
                 self.cluster.cluster_config.get_GPU(GPU_ID).GPU_type)
         for GPU_ID in self.cluster.cluster_config.GPU_IDs:
             GPU_mem = GPUType.normalized_memory(
-                GPU_type=self.cluster.cluster_config.GPU_ID_to_GPU_type[GPU_ID])
+                GPU_type=self.cluster.cluster_config.get_GPU(GPU_ID).GPU_type)
             task_assignments = GPU_ID_to_task_assignments[GPU_ID]
             total_comp = 0
             total_mem = 0

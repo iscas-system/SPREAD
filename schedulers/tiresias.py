@@ -27,15 +27,16 @@ class TiresiasScheduler(Scheduler):
         for job_ID in job_IDs:
             JAS_list.append(JAS(job_ID=job_ID, attained_service=self.job_attained_service[job_ID]))
         JAS_list.sort(key=lambda jas: jas.attained_service)
-        JAS_list = JAS_list[-40:]
+        JAS_list = JAS_list[:300]
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
         for jas in JAS_list:
             job_ID = jas.job_ID
             GPU_ID_to_remain_comp_mem = self.GPU_remain_comp_mem(GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
             job_spec = self.data_source.get_job_spec(job_ID)
+            comp_req = self.data_source.job_maximized_performance_comp(job_ID=job_ID, worker_count=job_spec.plan_worker_count, GPU_type=self.GPU_type, cross_node=False)
             remain_GPU_ID_comp_mem_list: List[GPU_ID_comp_mem_type] = list()
-            for GPU_ID in self.cluster.GPU_IDs:
+            for GPU_ID in self.cluster.cluster_config.GPU_IDs:
                 remain_comp_mem = GPU_ID_to_remain_comp_mem[GPU_ID]
                 comp, mem = remain_comp_mem
                 remain_GPU_ID_comp_mem_list.append(GPU_ID_comp_mem_type(GPU_ID, comp, mem))
@@ -48,7 +49,7 @@ class TiresiasScheduler(Scheduler):
                 slice_GPU_ID_comp_mem = remain_GPU_ID_comp_mem_list[i: i + window_size]
                 slice_total_resource = 0
                 for sliding_idx, item in enumerate(slice_GPU_ID_comp_mem):
-                    if item.comp < job_spec.plan_comp:
+                    if item.comp < comp_req:
                         comp_enough = False
                         continue
                     slice_total_resource += item.comp / CompCapacity
@@ -76,5 +77,4 @@ class TiresiasScheduler(Scheduler):
         assignments = Assignments.from_GPU_ID_to_task_assignments(
             cluster_config=self.cluster.cluster_config,
             GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
-        # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

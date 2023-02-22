@@ -20,7 +20,8 @@ class GavelScheduler(Scheduler):
 
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
-        job_IDs = job_IDs[-40:]
+        job_IDs = job_IDs[:300]
+        comp_req = 50
         assigned_job_IDs = set()
         while True:
             job_ID_to_comp_enough_GPU_ID_com_mem_slice = dict()
@@ -31,7 +32,7 @@ class GavelScheduler(Scheduler):
                     GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
                 job_spec = self.data_source.get_job_spec(job_ID)
                 remain_GPU_ID_comp_mem_list: List[GPU_ID_comp_mem_type] = list()
-                for GPU_ID in self.cluster.GPU_IDs:
+                for GPU_ID in self.cluster.cluster_config.GPU_IDs:
                     remain_comp_mem = GPU_ID_to_remain_comp_mem[GPU_ID]
                     comp, mem = remain_comp_mem
                     remain_GPU_ID_comp_mem_list.append(GPU_ID_comp_mem_type(GPU_ID, comp, mem))
@@ -46,7 +47,7 @@ class GavelScheduler(Scheduler):
                     slice_GPU_ID_comp_mem = remain_GPU_ID_comp_mem_list[i: i + window_size]
                     slice_total_resource = 0
                     for sliding_idx, item in enumerate(slice_GPU_ID_comp_mem):
-                        if item.comp < job_spec.plan_comp:
+                        if item.comp < comp_req:
                             comp_enough = False
                             continue
                         if item.mem < task_mem:
@@ -88,5 +89,4 @@ class GavelScheduler(Scheduler):
 
         assignments = Assignments.from_GPU_ID_to_task_assignments(cluster_config=self.cluster.cluster_config,
                                                                   GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
-        # oversupplied_assignments = assignments.supplement_over_supply()
         return assignments, None

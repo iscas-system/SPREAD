@@ -19,7 +19,7 @@ class KubeShareScheduler(Scheduler):
         job_IDs = Sorter.sort(jobs=[self.cluster.get_job(job_ID) for job_ID in job_IDs], data_source=self.data_source,
                               priority_type=PriorityType.FCFS)
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
-        job_IDs = job_IDs[:400]
+        job_IDs = job_IDs[:300]
         for job_ID in job_IDs:
             GPU_ID_to_remain_comp_mem = self.GPU_remain_comp_mem(GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
             job_spec = self.data_source.get_job_spec(job_ID)
