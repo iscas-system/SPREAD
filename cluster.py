@@ -118,28 +118,6 @@ class Assignments:
         return merged
 
     @classmethod
-    def from_solver_assigment(cls,
-                              cluster_config: ClusterConfig,
-                              GPU_type_to_task_comp_mem_requirements: Dict[
-                                  GPUType, Dict[str, Tuple[int, int]]],
-                              solver_assignments: Dict[str, Set[str]]) -> 'Assignments':
-        GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(
-            lambda: defaultdict(set))
-        for GPU_ID, task_IDs in solver_assignments.items():
-            for task_ID in task_IDs:
-                GPU_type = cluster_config.get_GPU(GPU_ID).GPU_type
-                task_comp_mem_requirements = GPU_type_to_task_comp_mem_requirements[GPU_type]
-                comp, mem = task_comp_mem_requirements[task_ID]
-                job_ID = Task.task_ID_to_job_ID(task_ID)
-                task_assignments = GPU_type_to_task_assignments[GPU_type][job_ID]
-                task = Task.from_task_ID(task_ID)
-                task_assignment = TaskAssignment(GPU_ID=GPU_ID, GPU_type=GPU_type, task=task,
-                                                 comp_req=comp, memory=mem)
-                assert task_assignment not in task_assignments
-                task_assignments.add(task_assignment)
-        return Assignments(cluster_config=cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
-
-    @classmethod
     def from_GPU_ID_to_task_assignments(cls,
                                         cluster_config: ClusterConfig,
                                         GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> 'Assignments':
