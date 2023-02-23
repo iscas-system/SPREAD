@@ -369,46 +369,27 @@ class Assignments:
         return self.merge(Assignments(cluster_config=self.cluster_config))
 
     def statistics(self, preemptive: bool, now: int, cluster: Cluster, data_source: DataSource) -> Dict:
-        job_over_supply, total_over_supply = self.get_job_over_supply()
-        job_lack_supply, total_lack_supply = self.get_job_lack_supply(data_source)
-        job_comp_util, total_comp_util = self.get_job_computation_utilization(data_source)
-        job_real_mem, total_real_mem = self.get_job_real_mem_utilization(data_source=data_source)
         cluster_real_total_mem = cluster.get_GPU_total_real_mem()
         profit = self.calc_profits(data_source=data_source, profit_calculator=get_profit_calculator(ProfitEnum.Throughput))
         deployed_jobs, deployed_dist_jobs, deployed_spread_jobs = self.deployed_jobs(data_source)
 
-        job_ID_to_task_assignments: DefaultDict = defaultdict(list)
+        job_ID_assignment_repr: DefaultDict = defaultdict(list)
         for job_ID, task_assignments in self.job_ID_to_task_assignments.items():
-            for task_assignment in task_assignments:
-                d = dict()
-                d["over_supplied"] = task_assignment.over_supplied
-                d["comp_req"] = task_assignment.comp_req
-                d["memory"] = task_assignment.memory
-                d["task_ID"] = task_assignment.task.task_ID
-                d["job_ID"] = task_assignment.task.job_ID
-                d["GPU_ID"] = task_assignment.GPU_ID
-                d["GPU_type"] = task_assignment.GPU_type
-                d["task_idx"] = task_assignment.task.task_idx
-                job_ID_to_task_assignments[job_ID].append(d)
+            worker_count = len(task_assignments)
+            comp = next(iter(task_assignments)).comp_req
+            node_ids = {cluster.cluster_config.GPU_ID_to_node_id[t.GPU_ID] for t in task_assignments}
+            cross_node = len(node_ids) > 1
+            job_ID_assignment_repr[job_ID] = f"{job_ID}|{worker_count}|{comp}|{cross_node}"
 
         d = {
             "now": now,
             "preemptive": preemptive,
-            "job_over_supply": job_over_supply,
-            "total_over_supply": total_over_supply,
-            "job_lack_supply": job_lack_supply,
-            "total_lack_supply": total_lack_supply,
-            "job_comp_util": job_comp_util,
-            "total_comp_util": total_comp_util,
-            "job_real_mem": job_real_mem,
-            "total_real_mem": int(total_real_mem),
             "cluster_real_total_mem": cluster_real_total_mem,
-            "total_mem_utilization": float(total_real_mem / cluster_real_total_mem),
             "profit": float(profit),
             "deployed_job_size": len(deployed_jobs),
             "deployed_dist_job_size": len(deployed_dist_jobs),
             "deployed_spread_job_size": len(deployed_spread_jobs),
-            "job_ID_to_task_assignments": job_ID_to_task_assignments,
+            "job_ID_to_assignment_repr": job_ID_assignment_repr,
         }
         return d
 

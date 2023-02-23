@@ -276,7 +276,7 @@ class DataSource:
         self.iteration_time_cache_df_index = ["model_name", "comp", "batch_size", "worker_count", "GPU_type", "cross_node"]
         self.iteration_time_cache_df = self.iteration_time_cache_df.set_index(self.iteration_time_cache_df_index)
         self.model_maximized_performance_comps_cache = pd.DataFrame(
-            columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_time_nano",
+            columns=["model_name", "batch_size", "GPU_type", "worker_count", "cross_node", "iteration_time_nano",
                      "comp"])
         self.model_maximized_performance_comps_cache_index = ["model_name", "batch_size", "GPU_type", "worker_count", "cross_node"]
         self.model_maximized_performance_comps_cache = self.model_maximized_performance_comps_cache.set_index(self.model_maximized_performance_comps_cache_index)
@@ -305,26 +305,23 @@ class DataSource:
                             comp_req: float) -> Optional[int]:
         # find in cache first
         df = self.iteration_time_cache_df
-        filtered = df.query(
-            f"model_name == '{model_name.name}' & "
-            f"comp == {comp_req} & "
-            f"batch_size == {batch_size} & "
-            f"GPU_type == '{GPU_type.name}' & "
-            f"worker_count == {worker_count} & "
-            f"cross_node == {cross_node}"
-        )
-        # filtered = df[
-        #     (df["model_name"] == model_name.name) &
-        #     (df["comp"] == comp_req) &
-        #     (df["batch_size"] == batch_size) &
-        #     (df["GPU_type"] == GPU_type.name) &
-        #     (df["worker_count"] == worker_count) &
-        #     (df["cross_node"] == cross_node)
-        #     ]
-        assert len(filtered) <= 1
-        if len(filtered) == 1:
-            d = filtered.iloc[0].to_dict()
-            return d["iteration_time_nano"]
+        # filtered = df.query(
+        #     f"model_name == '{model_name.name}' & "
+        #     f"comp == {comp_req} & "
+        #     f"batch_size == {batch_size} & "
+        #     f"GPU_type == '{GPU_type.name}' & "
+        #     f"worker_count == {worker_count} & "
+        #     f"cross_node == {cross_node}"
+        # )
+        # assert len(filtered) <= 1
+        # if len(filtered) == 1:
+        #     d = filtered.iloc[0].to_dict()
+        #     return d["iteration_time_nano"]
+        try:
+            iteration_time_nano = df.loc[(model_name.name, comp_req, batch_size, worker_count, GPU_type.name, cross_node)]["iteration_time_nano"]
+            return iteration_time_nano
+        except KeyError:
+            pass
 
         def calculate_iteration_nano():
             worker_batch_size = batch_size // worker_count
@@ -468,26 +465,23 @@ class DataSource:
     def model_maximized_performance_comp(self, model_name: ModelName, batch_size: int, GPU_type: GPUType,
                                          worker_count: int, cross_node: bool) -> Tuple[int, int]:
         model_name_str = model_name.name
-        GPU_type_str = GPU_type.name
         df = self.model_maximized_performance_comps_cache
-        filtered = df.query(
-            f"model_name == '{model_name_str}' & "
-            f"GPU_type == '{GPU_type_str}' &"
-            f"batch_size == {batch_size} &"
-            f"worker_count == {worker_count} &"
-            f"cross_node == {cross_node}"
-        )
-        # filtered = df[
-        #     (df["model_name"] == model_name_str) &
-        #     (df["GPU_type"] == GPU_type_str) &
-        #     (df["batch_size"] == batch_size) &
-        #     (df["worker_count"] == worker_count) &
-        #     (df["cross_node"] == cross_node)
-        #     ]
-        assert len(filtered) <= 1
-        if len(filtered) == 1:
-            d = filtered.iloc[0].to_dict()
-            return d["comp"], d["iteration_time_nano"]
+        try:
+            series = df.loc[(model_name.name, batch_size, GPU_type.name, worker_count, cross_node)]
+            return series["comp"], series["iteration_time_nano"]
+        except KeyError:
+            pass
+        # filtered = df.query(
+        #     f"model_name == '{model_name_str}' & "
+        #     f"GPU_type == '{GPU_type_str}' &"
+        #     f"batch_size == {batch_size} &"
+        #     f"worker_count == {worker_count} &"
+        #     f"cross_node == {cross_node}"
+        # )
+        # assert len(filtered) <= 1
+        # if len(filtered) == 1:
+        #     d = filtered.iloc[0].to_dict()
+        #     return d["comp"], d["iteration_time_nano"]
 
         comp_end = CompCapacity + 1
         max_iter = self.iteration_time_nano(model_name=model_name, batch_size=batch_size, GPU_type=GPU_type,

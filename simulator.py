@@ -1,6 +1,7 @@
 import datetime
 import json
 import os.path
+import threading
 from time import time_ns
 from typing import Dict, Tuple, Set, Optional, List, Any
 
@@ -12,9 +13,10 @@ from config import get_config, ClusterConfig, DataSourceConfig
 from data_source import DataSource
 from log import info
 from object import Job, SchedulerEnum, ProfitEnum, SolverEnum, SimulatingMethod
-from plot_assignment import do_snapshot_record_plot
+from profit import get_profit_calculator
 from scheduler import Scheduler
 from schedulers import init_scheduler
+from snapshot import save_snapshot_record
 
 
 class Simulator:
@@ -111,11 +113,13 @@ class Simulator:
                 scheduler.cluster.submit(job)
                 submit_jobs.add(job)
             last_assignments = now_assignments
-            info(f"Simulator: current time sec: {self.now / 1e9}, done jobs between iterations: {len(done_jobs)}, newly submitted jobs: {len(submit_job_IDs)}.")
+            info(
+                f"Simulator: current time sec: {self.now / 1e9}, done jobs between iterations: {len(done_jobs)}, newly submitted jobs: {len(submit_job_IDs)}.")
             info(f"Simulator: is_preemptive: {is_preemptive_interval}")
             info(f"Simulator: scheduler {scheduler.name} starts do assign.")
             before = time_ns()
-            assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval, now=self.now, done_jobs_between_preemption=done_jobs_between_preemption)
+            assignments, scheduler_reports = scheduler.do_assign(preemptive=is_preemptive_interval, now=self.now,
+                                                                 done_jobs_between_preemption=done_jobs_between_preemption)
             end = time_ns()
             if is_preemptive_interval:
                 done_jobs_between_preemption.clear()
@@ -123,26 +127,39 @@ class Simulator:
             scheduler.cluster.ensure_start(self.now)
 
             info(f"Simulator: scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
-            snapshot_record_parameters = scheduler.build_snapshot_record_parameters(self.now)
-            # enable_plot = self.cluster_config.enable_plot and self.data_source_config.enable_plot
-            snapshot_record_parameters.do_plot = False
 
-            do_snapshot_record_plot(session_id=session_id, iteration_idx=iteration, is_preemptive_interval=is_preemptive_interval, snapshot_record_parameters=snapshot_record_parameters)
+            assignment_profit = scheduler.cluster.assignments.calc_profits(data_source=self.data_source,
+                                                                           profit_calculator=get_profit_calculator(
+                                                                               scheduler.profit_enum))
+
+            self.snapshot(scheduler, session_id, iteration_idx=iteration, preemptive=is_preemptive_interval)
+
             running_status = scheduler.cluster.running_status(data_source=self.data_source)
 
-            record.add_schedule_overhead(end - before)
-            record.add_schedule_reports(scheduler_reports)
-            record.add_assignments_statistics(
-                scheduler.cluster.assignments.statistics(preemptive=is_preemptive_interval, now=self.now, cluster=scheduler.cluster, data_source=self.data_source))
+            self.update_record(record, end - before, scheduler_reports, preemptive=is_preemptive_interval,
+                               scheduler=scheduler)
 
-            info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
-            info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
+            info(f"Simulator: running status: {running_status}, assignment profit: {assignment_profit}")
+            info(
+                f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
             job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in
                                               self.job_remaining_durations(scheduler.cluster).items()}
             info(f"Simulator: running job remaining durations (second): {job_remaining_duration_seconds}")
             info(f"Simulator: iteration {iteration} ends.")
             info("")
         record.save()
+
+    def snapshot(self, scheduler: Scheduler, session_id: str, iteration_idx: int, preemptive: bool):
+        def save_snapshot():
+            snapshot_record_parameters = scheduler.build_snapshot_record_parameters(self.now)
+            snapshot_record_parameters.do_plot = False
+
+            save_snapshot_record(session_id=session_id, iteration_idx=iteration_idx,
+                                 is_preemptive_interval=preemptive,
+                                 snapshot_record_parameters=snapshot_record_parameters)
+
+        t = threading.Thread(target=save_snapshot)
+        t.start()
 
     def play(self):
         if self.simulating_method == SimulatingMethod.Trace:
@@ -180,30 +197,39 @@ class Simulator:
             info(f"Simulator: submit job IDs = {submit_job_IDs}")
             info(f"Simulator: scheduler {scheduler.name} starts do assign.")
             before = time_ns()
-            assignments, scheduler_reports = scheduler.do_assign(preemptive=True, now=self.now, done_jobs_between_preemption=set())
+            assignments, scheduler_reports = scheduler.do_assign(preemptive=True, now=self.now,
+                                                                 done_jobs_between_preemption=set())
             end = time_ns()
-            info(f"Simulator: random placement scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
+            info(
+                f"Simulator: random placement scheduler {scheduler.name} do assign done with {(end - before) / 1e9} seconds.")
             scheduler.cluster.assignments = assignments
             scheduler.cluster.ensure_start(self.now)
 
-            snapshot_record_parameters = scheduler.build_snapshot_record_parameters(self.now)
+            assignment_profit = scheduler.cluster.assignments.calc_profits(data_source=self.data_source,
+                                                                           profit_calculator=get_profit_calculator(
+                                                                               scheduler.profit_enum))
 
-            do_snapshot_record_plot(session_id=session_id, iteration_idx=i, is_preemptive_interval=True, snapshot_record_parameters=snapshot_record_parameters)
+            self.snapshot(scheduler, session_id, iteration_idx=i, preemptive=True)
+
             running_status = scheduler.cluster.running_status(data_source=self.data_source)
 
-            record.add_schedule_overhead(end - before)
-            record.add_schedule_reports(scheduler_reports)
-            record.add_assignments_statistics(
-                scheduler.cluster.assignments.statistics(preemptive=True, now=self.now, cluster=scheduler.cluster, data_source=self.data_source))
+            self.update_record(record, end - before, scheduler_reports, preemptive=True, scheduler=scheduler)
 
-            info(f"Simulator: running status: {running_status}, assignment profit: {snapshot_record_parameters.profit}")
-            info(f"Simulator: done jobs size: {len(scheduler.cluster.done_jobs)}, undone jobs size: {len(scheduler.cluster.jobs)}")
-            job_remaining_duration_seconds = {job_ID: remaining_duration / 1e9 for job_ID, remaining_duration in
-                                              self.job_remaining_durations(scheduler.cluster).items()}
-            info(f"Simulator: running job remaining durations (second): {job_remaining_duration_seconds}")
+            info(f"Simulator: running status: {running_status}, assignment profit: {assignment_profit}")
             info(f"Simulator: iteration {i} ends.")
             info("")
         record.save()
+
+    def update_record(self, record: 'PlayRecord',
+                      schedule_duration_nano: int,
+                      schedule_reports: Optional[Any],
+                      preemptive: bool,
+                      scheduler: Scheduler):
+        record.add_schedule_overhead(schedule_duration_nano)
+        record.add_schedule_reports(schedule_reports)
+        record.add_assignments_statistics(
+            scheduler.cluster.assignments.statistics(preemptive=preemptive, now=self.now, cluster=scheduler.cluster,
+                                                     data_source=self.data_source))
 
     def add_preemptive_overheads(self, cluster: Cluster, record: 'PlayRecord', last_assignments: Assignments,
                                  curr_assignments: Assignments):
@@ -363,6 +389,7 @@ class PlayRecord:
         def np_encoder(object):
             if isinstance(object, np.generic):
                 return object.item()
+
         with open(filepath, 'w') as f:
             json.dump(d, f, default=np_encoder, indent='\t')
         info(f"Simulation records saved to {filepath}.")

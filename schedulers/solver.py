@@ -8,7 +8,7 @@ import gurobipy as gu
 from gurobipy import GRB
 
 from log import *
-from model import SolverResult, SolverParameters, SolverParameters2, SolverParameters3, SolverParametersSC, \
+from model import SolverResult, SolverResultSC2, SolverParameters, SolverParameters2, SolverParameters3, SolverParametersSC, SolverParametersSC2, \
     PartitionSolverParameters, \
     PartitionSolverResult, JobDistributionSolverParameters, JobDistributionSolverResult
 from object import SolverEnum
@@ -91,6 +91,30 @@ def do_MMKP_solve_SC(solver_params: SolverParametersSC) -> Optional[SolverResult
         return None
     assignment, profit = solve_raw_res
     solver_result = SolverResult(solver_parameters_SC=solver_params,
+                                 duration=(end - start),
+                                 profit=profit,
+                                 assignment=assignment)
+    return solver_result
+
+
+def do_MMKP_solve_SC_2(solver_params: SolverParametersSC2) -> Optional[SolverResultSC2]:
+    # info(f"received solver parameters, solver_params: {solver_params}")
+    start = time.time_ns()
+    solve_raw_res = AssignmentSolver.MMKP_SC_2(
+        timeout=solver_params.timeout,
+        job_ID_to_spread_job_IDs=solver_params.job_ID_to_spread_job_IDs,
+        spread_job_ID_to_task_set=solver_params.spread_job_ID_to_task_set,
+        GPU_comp_mem_capacity=solver_params.GPU_comp_mem_capacity,
+        in_node_spread_job_IDs=solver_params.in_node_spread_job_IDs,
+        cross_node_spread_job_IDs=solver_params.cross_node_spread_job_IDs,
+        spread_job_task_resource_demands=solver_params.spread_job_task_resource_demands,
+        spread_job_task_max_profit=solver_params.spread_job_task_max_profit,
+        GPU_ID_to_node_id=solver_params.GPU_ID_to_node_id)
+    end = time.time_ns()
+    if solve_raw_res is None:
+        return None
+    assignment, profit = solve_raw_res
+    solver_result = SolverResultSC2(solver_parameters_SC=solver_params,
                                  duration=(end - start),
                                  profit=profit,
                                  assignment=assignment)
@@ -801,6 +825,194 @@ class AssignmentSolver:
             assigned_tasks.update(tasks)
         return assignment, cal_profit(task_comp_mem_requirements_and_profits, assignment)
 
+    @staticmethod
+    def MMKP_SC_2(
+            timeout: int,
+            job_ID_to_spread_job_IDs: Dict[str, List[str]],
+            spread_job_ID_to_task_set: Dict[str, List[str]],
+            GPU_comp_mem_capacity: Dict[str, Tuple[int, int]],
+            spread_job_task_resource_demands: Dict[str, Tuple[int, int]], # spread job ID to task resource demands
+            spread_job_task_max_profit: Dict[str, Union[int, float]], # spread job ID to max profit
+            in_node_spread_job_IDs: List[str],
+            cross_node_spread_job_IDs: List[str],
+            GPU_ID_to_node_id: Dict[str, str]) \
+            -> Optional[Tuple[Dict[str, Set[Tuple[str, float]]], Union[int, float]]]:
+
+        if len(spread_job_task_resource_demands) == 0:
+            return dict(), 0
+        node_id_to_GPU_IDs = defaultdict(list)
+        for GPU_ID, node_id in GPU_ID_to_node_id.items():
+            node_id_to_GPU_IDs[node_id].append(GPU_ID)
+
+        task_to_spread_job_ID = dict()
+        for spread_job_ID, task_set in spread_job_ID_to_task_set.items():
+            for task in task_set:
+                task_to_spread_job_ID[task] = spread_job_ID
+
+        if len(node_id_to_GPU_IDs) == 1:
+            for job_ID, spread_job_IDs in job_ID_to_spread_job_IDs.items():
+                for cross_node_spread_job_ID in cross_node_spread_job_IDs:
+                    if cross_node_spread_job_ID in spread_job_IDs:
+                        spread_job_IDs.remove(cross_node_spread_job_ID)
+            for cross_node_spread_job_ID in cross_node_spread_job_IDs:
+                spread_job_ID_to_task_set.pop(cross_node_spread_job_ID)
+                spread_job_task_resource_demands.pop(cross_node_spread_job_ID)
+                spread_job_task_max_profit.pop(cross_node_spread_job_ID)
+
+        dist_tasks = list()
+        for spread_job_ID, task_sets in spread_job_ID_to_task_set.items():
+            if len(task_sets) > 1:
+                dist_tasks.append(task_sets)
+
+        dist_job_task_size_tasks = {
+            f"dist_job_{idx}": (len(tasks), tasks) for idx, tasks in enumerate(dist_tasks)
+        }
+        GPUs, GPU_comp_capacity, GPU_mem_capacity = gu.multidict(GPU_comp_mem_capacity)
+        tasks = set()
+        for task_set in spread_job_ID_to_task_set.values():
+            tasks.update(task_set)
+        spread_job_IDs, spread_job_task_max_comp, spread_job_task_mem_demands = gu.multidict(
+            spread_job_task_resource_demands
+        )
+
+        m = gu.Model()
+        X = m.addVars(tasks, GPUs, vtype=GRB.BINARY) # x in {0, 1}
+        Y = m.addVars(spread_job_IDs, lb=0, ub=1) # y in [0, 1]
+
+        m.addConstrs(
+            (X.sum(t, '*') <= 1 for t in tasks),
+            "each_task_appears_only_once")
+
+        m.addConstrs(
+            (gu.quicksum(X[t, a] * Y[task_to_spread_job_ID[t]] * spread_job_task_max_comp[task_to_spread_job_ID[t]] for t in tasks) <= GPU_comp_capacity[a]
+             for a in GPUs),
+            "task_comp_requirement_less_than_GPU_capacity")
+
+        m.addConstrs(
+            (gu.quicksum(spread_job_task_mem_demands[task_to_spread_job_ID[t]] * X[t, a] for t in tasks) <= GPU_mem_capacity[a]
+             for a in GPUs),
+            "task_mem_requirement_less_than_GPU_capacity")
+
+        if len(dist_job_task_size_tasks) > 0:
+            dist_jobs, dist_job_task_size, dist_job_tasks = gu.multidict(dist_job_task_size_tasks)
+            # dist_jobs, dist_job_task_size, dist_job_tasks = gu.multidict({
+            #     "job_1": (2, ("task_1_job_1", "task_2_job_1"))
+            # })
+            m.addConstrs(
+                (gu.quicksum(X[t, a]
+                             for t in dist_job_tasks[dist_job]) <= 1
+                 for a in GPUs
+                 for dist_job in dist_jobs),
+                "dist_job_tasks_not_on_same_GPU")
+
+            z = gu.tupledict()
+            for dist_job in dist_jobs:
+                z[dist_job, 1] = m.addVar(vtype=GRB.BINARY, name=f"{dist_job}_indicator_1")
+                z[dist_job, 2] = m.addVar(vtype=GRB.BINARY, name=f"{dist_job}_indicator_2")
+
+                m.addConstr(z[dist_job, 1] + z[dist_job, 2] == 1, f"{dist_job}_indicator_equation")
+
+                m.addGenConstrIndicator(z[dist_job, 1], True,
+                                        gu.quicksum(X[t, a] for t in dist_job_tasks[dist_job] for a in GPUs),
+                                        GRB.LESS_EQUAL, 0,
+                                        name=f"{dist_job}_indicator_LESS_EQUAL_0")
+                m.addGenConstrIndicator(z[dist_job, 2], True,
+                                        gu.quicksum(X[t, a] for t in dist_job_tasks[dist_job] for a in GPUs),
+                                        GRB.GREATER_EQUAL,
+                                        dist_job_task_size[dist_job],
+                                        name=f"{dist_job}_indicator_GREATER_EQUAL_0")
+
+        sp = gu.tupledict()
+
+        for job_ID, spread_job_IDs in job_ID_to_spread_job_IDs.items():
+            if len(spread_job_IDs) == 1:
+                continue
+            for i, spread_job_ID in enumerate(spread_job_IDs):
+                task_sets = spread_job_ID_to_task_set[spread_job_ID]
+                sp[job_ID, i] = m.addVar(vtype=GRB.BINARY, name=f"{job_ID}_spread_only_one_indicator_{i}")
+
+                # m.addGenConstrIndicator(sp[splitting_job, i], True,
+                #                     gu.quicksum(X[t, a] for t in splitting_plan_task_IDs for a in GPUs) >= 1,
+                #                     name=f"{splitting_job}_indicator_GREATER_EQUAL_1")
+                m.addConstr(
+                    (sp[job_ID, i] == 1)
+                    >>
+                    (gu.quicksum(X[t, a] for t in task_sets for a in GPUs) == 0)
+                )
+            m.addConstr(gu.quicksum(sp.select(job_ID, '*')) >= len(spread_job_IDs) - 1,
+                        f"{job_ID}_spread_only_one_indicator_equation")
+
+        if len(node_id_to_GPU_IDs) > 1:
+            # in node
+            in_node = gu.tupledict()
+            for in_node_spread_job_ID in in_node_spread_job_IDs:
+                spread_tasks = spread_job_ID_to_task_set[in_node_spread_job_ID]
+                if len(spread_tasks) == 1:
+                    continue
+                for node_id in node_id_to_GPU_IDs.keys():
+                    GPU_IDs_of_node = node_id_to_GPU_IDs[node_id]
+                    in_node[in_node_spread_job_ID, 1] = m.addVar(vtype=GRB.BINARY,
+                                                                 name=f"in_node_{in_node_spread_job_ID}_indicator_1")
+                    in_node[in_node_spread_job_ID, 2] = m.addVar(vtype=GRB.BINARY,
+                                                                 name=f"in_node_{in_node_spread_job_ID}_indicator_2")
+
+                    m.addConstr(in_node[in_node_spread_job_ID, 1] + in_node[in_node_spread_job_ID, 2] == 1,
+                                f"in_node_{in_node_spread_job_ID}_indicator_equation")
+
+                    m.addGenConstrIndicator(in_node[in_node_spread_job_ID, 1], True,
+                                            gu.quicksum(X[t, a] for t in spread_tasks for a in
+                                                        GPU_IDs_of_node),
+                                            GRB.LESS_EQUAL, 0,
+                                            name=f"in_node_{in_node_spread_job_ID}_indicator_LESS_EQUAL_0")
+                    m.addGenConstrIndicator(in_node[in_node_spread_job_ID, 2], True,
+                                            gu.quicksum(X[t, a] for t in spread_tasks for a in
+                                                        GPU_IDs_of_node),
+                                            GRB.GREATER_EQUAL,
+                                            len(spread_tasks),
+                                            name=f"in_node_{in_node_spread_job_ID}_indicator_GREATER_EQUAL_0")
+
+            for cross_node_spread_job_ID in cross_node_spread_job_IDs:
+                spread_tasks = spread_job_ID_to_task_set[cross_node_spread_job_ID]
+                if len(spread_tasks) == 1:
+                    continue
+                for node_id in node_id_to_GPU_IDs.keys():
+                    GPU_IDs_of_node = node_id_to_GPU_IDs[node_id]
+                    m.addConstr(
+                        gu.quicksum(X[t, a] for t in spread_tasks for a in GPU_IDs_of_node) <= len(spread_tasks) - 1,
+                        f"cross_node_{cross_node_spread_job_ID}_job_not_on_same_node")
+
+        m.setObjective(gu.quicksum(spread_job_task_max_profit[task_to_spread_job_ID[t]] * X[t, a] * Y[task_to_spread_job_ID[t]] for t in tasks for a in GPUs), GRB.MAXIMIZE)
+        m.setParam('TimeLimit', timeout)
+        m.update()
+        start = time.time_ns()
+        m.optimize()
+        end = time.time_ns()
+
+        if m.Status != GRB.OPTIMAL:
+            info(f"MMKP solver finds unexpected none optimal solution, status = {m.Status}")
+            return None
+
+        info(
+            f"MMKP solver finds optimal solution, objective value == {m.ObjVal}, duration seconds = {(end - start) / 1e9}")
+        assignment: Dict[str, Set[Tuple[str, float]]] = defaultdict(set)
+        for a in GPUs:
+            for t in tasks:
+                if X[t, a].X < 0.5:
+                    continue
+                spread_job_ID = task_to_spread_job_ID[t]
+                comp = Y[spread_job_ID].X * spread_job_task_max_comp[spread_job_ID]
+                assignment[a].add((t, comp))
+
+        own_calculated_profit = float(cal_profit_2(spread_job_task_max_profit, assignment, task_to_spread_job_ID, spread_job_task_max_comp))
+        diff = abs(m.ObjVal - own_calculated_profit)
+        info(f"diff with own calculated profit: {diff}")
+        if diff > 1e-7:
+            info(f"diff > 1e-7: {diff}")
+
+        assigned_tasks = set()
+        for tasks in assignment.values():
+            assigned_tasks.update(tasks)
+        return assignment, own_calculated_profit
 
 class JobDistributionSolver:
     @staticmethod
@@ -884,6 +1096,16 @@ def cal_profit(task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int,
     for a in assignment:
         for t in assignment[a]:
             pf = task_comp_mem_requirements_and_profits[t][-1]
+            total_profit += pf
+    return total_profit
+
+def cal_profit_2(spread_job_max_profit: Dict[str, Union[int, float]], assignment: Dict[str, Set[Tuple[str, float]]], task_to_spread_job_ID: Dict[str, str], spread_job_task_max_comp: Dict[str, int]):
+    total_profit = 0
+    for a in assignment:
+        for t in assignment[a]:
+            task, comp = t
+            spread_job_ID = task_to_spread_job_ID[task]
+            pf = spread_job_max_profit[spread_job_ID] * comp / spread_job_task_max_comp[spread_job_ID]
             total_profit += pf
     return total_profit
 
@@ -1007,7 +1229,7 @@ def do_test_3():
     info(assignment)
 
 
-def do_test_4():
+def do_test_SC_1():
     job_ID_to_spread_job_IDs = {
         "job_1": ["job_1|sp_1|in", "job_1|sp_2|in", "job_1|sp_2|cn"],
         "job_2": ["job_2|sp_1|in", "job_2|sp_4|in"],
@@ -1064,6 +1286,78 @@ def do_test_4():
         GPU_ID_to_node_id=GPU_ID_to_node_id)
     info(assignment)
 
+def do_test_SC_2():
+    job_ID_to_spread_job_IDs = {
+        "job_1": ["job_1|sp_1|in", "job_1|sp_2|in", "job_1|sp_2|cn"],
+        "job_2": ["job_2|sp_1|in", "job_2|sp_2|in", "job_2|sp_4|in"],
+        "job_3": ["job_3|sp_1|in"]
+    }
+
+    spread_job_ID_to_task_set = {
+        "job_1|sp_1|in": ["job_1|sp_1|in|task_0"],
+        "job_1|sp_2|in": ["job_1|sp_2|in|task_0", "job_1|sp_2|in|task_1"],
+        "job_1|sp_2|cn": ["job_1|sp_2|cn|task_0", "job_1|sp_2|cn|task_1"],
+        "job_2|sp_1|in": ["job_2|sp_1|in|task_0"],
+        "job_2|sp_2|in": ["job_2|sp_2|in|task_0", "job_2|sp_2|in|task_1"],
+        "job_2|sp_4|in": ["job_2|sp_4|in|task_0", "job_2|sp_4|in|task_1", "job_2|sp_4|in|task_2",
+                          "job_2|sp_4|in|task_3"],
+        "job_3|sp_1|in": ["job_3|sp_1|in|task_0"]
+    }
+
+    GPU_to_comp_mem_capacity = {
+        "RTX_2080Ti_0": (3, 22),
+        "RTX_2080Ti_1": (5, 22),
+        "RTX_2080Ti_2": (5, 22),
+        "RTX_2080Ti_3": (5, 22),
+    }
+    GPU_ID_to_node_id = {
+        "RTX_2080Ti_0": "node_0",
+        "RTX_2080Ti_1": "node_0",
+        "RTX_2080Ti_2": "node_1",
+        "RTX_2080Ti_3": "node_1",
+    }
+    spread_job_task_max_profit = {
+        "job_1|sp_1|in": 1,
+        "job_1|sp_2|in": 3,
+        "job_1|sp_2|cn": 2,
+        "job_2|sp_1|in": 4,
+        "job_2|sp_2|in": 3,
+        "job_2|sp_4|in": 100,
+        "job_3|sp_1|in": 1
+    }
+    spread_job_task_resource_demands = {
+        "job_1|sp_1|in": (1, 1),
+        "job_1|sp_2|in": (2, 2),
+        "job_1|sp_2|cn": (2, 2),
+        "job_2|sp_1|in": (5, 5),
+        "job_2|sp_2|in": (3, 5),
+        "job_2|sp_4|in": (2, 5),
+        "job_3|sp_1|in": (10, 1)
+    }
+
+    in_node_spread_job_IDs = ["job_1|sp_1|in",
+                              "job_1|sp_2|in",
+                              "job_2|sp_1|in",
+                              "job_2|sp_2|in",
+                              "job_2|sp_4|in",
+                              "job_3|sp_1|in"]
+    cross_node_spread_job_IDs = ["job_1|sp_2|cn"]
+
+    solver_result_2 = do_MMKP_solve_SC_2(SolverParametersSC2(
+        timeout=30,
+        job_ID_to_spread_job_IDs=job_ID_to_spread_job_IDs,
+        spread_job_ID_to_task_set=spread_job_ID_to_task_set,
+        GPU_comp_mem_capacity=GPU_to_comp_mem_capacity,
+        spread_job_task_max_profit=spread_job_task_max_profit,
+        spread_job_task_resource_demands=spread_job_task_resource_demands,
+        in_node_spread_job_IDs=in_node_spread_job_IDs,
+        cross_node_spread_job_IDs=cross_node_spread_job_IDs,
+        GPU_ID_to_node_id=GPU_ID_to_node_id
+    ))
+
+    assignment, profit = solver_result_2.assignment, solver_result_2.profit
+
+    # info(assignment)
 
 def do_partition_test_1():
     GPU_ID_to_node_id = {
@@ -1103,4 +1397,5 @@ def do_partition_test_1():
 
 if __name__ == '__main__':
     # do_partition_test_1()
-    do_test_4()
+    # do_test_SC_1()
+    do_test_SC_2()

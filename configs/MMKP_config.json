@@ -3,7 +3,7 @@
   "use_default_license": true,
   "session_id": "trace",
   "simulating_method": "Trace",
-  "multiprocessing": true,
+  "multiprocessing": false,
   "simulating_method_config": {
     "repeat": 1
   },
@@ -261,6 +261,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "RoundRobin", "Kubernetes"
+    "BestFit"
   ]
 }

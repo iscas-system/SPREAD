@@ -1,7 +1,8 @@
+import math
 from collections import defaultdict
 from itertools import chain
 from typing import Tuple, Optional, List, Dict, Set, Any
-
+from collections import namedtuple
 from cluster import TaskAssignment, Assignments
 from config import ClusterConfig, job_deploy_specs
 from log import info
@@ -9,8 +10,8 @@ from object import GPUType, CompCapacity, Job, Task, PriorityType
 from profit import get_profit_calculator
 from scheduler import Scheduler
 from .sorter import Sorter
-from .solver import do_MMKP_solve_SC, \
-    SolverParametersSC, do_partition_solve, SolverResult, \
+from .solver import do_MMKP_solve_SC_2, \
+    SolverParametersSC2, do_partition_solve, SolverResultSC2, \
     PartitionSolverParameters, do_job_distribution_solve, JobDistributionSolverParameters
 
 
@@ -238,11 +239,11 @@ class MMKPScheduler(Scheduler):
             for v in job_variants_:
                 job_ID_to_spread_job_IDs[v.job_ID].append(v.variant_job_ID)
             # 5
-            spread_job_ID_to_task_sets: Dict[str, List[str]] = dict(list)
+            spread_job_ID_to_task_set: Dict[str, List[str]] = dict(list)
             for v in job_variants_:
                 if v.worker_count == 1:
                     continue
-                spread_job_ID_to_task_sets[v.variant_job_ID] = v.variant_task_IDs()
+                spread_job_ID_to_task_set[v.variant_job_ID] = v.variant_task_IDs()
             # 6, 7
             in_node_spread_job_IDs: List[str] = list()
             cross_node_spread_job_IDs: List[str] = list()
@@ -252,50 +253,59 @@ class MMKPScheduler(Scheduler):
                 else:
                     in_node_spread_job_IDs.append(v.variant_job_ID)
             # 8
-            dist_tasks: List[Tuple[str, ...]] = list()
-            for v in job_variants_:
-                if v.worker_count > 1:
-                    dist_tasks.append(tuple(v.variant_task_IDs()))
-            # 9
-            task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]] = dict()
+            spread_job_task_resource_demands: Dict[str, Tuple[int, int]] = dict()
+            spread_job_task_max_profit: Dict[str, float] = dict()
             for v in job_variants_:
                 comp = v.comp
                 _, mem = self.data_source.get_job_task_memory(v.job_ID, worker_count=v.worker_count)
                 task_profit = job_variant_profits[v.variant_job_ID] / v.worker_count
-                for t in v.variant_task_IDs():
-                    task_comp_mem_requirements_and_profits[t] = (comp, mem, task_profit)
-            # 10
+                spread_job_task_resource_demands[v.variant_job_ID] = (comp, mem)
+                spread_job_task_max_profit[v.variant_job_ID] = task_profit
+
+            # 9
             GPU_ID_to_node_id: Dict[str, str] = partition_cluster_config.GPU_ID_to_node_id
 
-            solver_params_ = SolverParametersSC(
-                solver_type=solver_enum,
+            solver_params_ = SolverParametersSC2(
                 timeout=timeout,
                 job_ID_to_spread_job_IDs=job_ID_to_spread_job_IDs,
-                spread_job_ID_to_task_sets=spread_job_ID_to_task_sets,
+                spread_job_ID_to_task_set=spread_job_ID_to_task_set,
+                spread_job_task_resource_demands=spread_job_task_resource_demands,
+                spread_job_task_max_profit=spread_job_task_max_profit,
                 GPU_comp_mem_capacity=GPU_comp_mem_capacity,
                 in_node_spread_job_IDs=in_node_spread_job_IDs,
                 cross_node_spread_job_IDs=cross_node_spread_job_IDs,
-                dist_tasks=dist_tasks,
-                task_comp_mem_requirements_and_profits=task_comp_mem_requirements_and_profits,
                 GPU_ID_to_node_id=GPU_ID_to_node_id,
             )
             return solver_params_
 
-        def solve() -> SolverResult:
-            def solve_for_max_worker_count(max_worker_count_: int):
+        def solve() -> SolverResultSC2:
+            SolvingSpec = namedtuple("SolvingSpec", field_names=["max_worker_count", "allow_cross_node"])
+            def solve_for_spec(solving_spec_: SolvingSpec):
+                max_worker_count_ = solving_spec_.max_worker_count
+                allow_cross_node_ = solving_spec_.allow_cross_node
                 job_variants_ = [v for v in job_variants if v.worker_count <= max_worker_count_]
+                if not allow_cross_node_:
+                    job_variants_ = [v for v in job_variants_ if not v.cross_node]
                 solver_params_ = prepare_solver_params(job_variants_)
-                return do_MMKP_solve_SC(solver_params=solver_params_)
+                return do_MMKP_solve_SC_2(solver_params=solver_params_)
 
-            max_worker_counts = (4, 2, 1)
+            fallback_solving_specs = (
+                SolvingSpec(4, True),
+                SolvingSpec(4, False),
+                SolvingSpec(2, True),
+                SolvingSpec(2, False),
+                SolvingSpec(1, False)
+            )
             if not self.use_spread:
-                max_worker_counts = (1, )
-            for max_worker_count in max_worker_counts:
-                solver_result_ = solve_for_max_worker_count(max_worker_count_=max_worker_count)
-                info(f"MMKP scheduler starts solving with maximum worker count = {max_worker_count}.")
+                fallback_solving_specs = (
+                    SolvingSpec(1, False)
+                )
+            for solving_spec in fallback_solving_specs:
+                solver_result_ = solve_for_spec(solving_spec_=solving_spec)
+                info(f"MMKP scheduler starts solving with solving_spec = {solving_spec}.")
                 if solver_result_ is not None:
                     info(
-                        f"MMKP scheduler uses {solver_result_.duration} secs to find the optimal placement with maximum worker count = {max_worker_count}.")
+                        f"MMKP scheduler uses {solver_result_.duration} secs to find the optimal placement with solving spec = {solving_spec}.")
                     return solver_result_
                 else:
                     info(f"MMKP scheduler cannot find the optimal placement in "
@@ -304,20 +314,22 @@ class MMKPScheduler(Scheduler):
 
         solver_result = solve()
 
-        def build_assignments(solver_result_: SolverResult):
+        def build_assignments(solver_result_: SolverResultSC2):
             variant_task_comp_mem_demands = dict()
-            for variant_task_ID_, comp_mem_profit in solver_result.solver_parameters_SC.task_comp_mem_requirements_and_profits.items():
-                comp, mem, _ = comp_mem_profit
+            for variant_task_ID_, comp_mem in solver_result.solver_parameters_SC2.spread_job_task_resource_demands.items():
+                comp, mem = comp_mem
                 variant_task_comp_mem_demands[variant_task_ID_] = comp, mem
 
             GPU_type_to_task_assignments: Dict[GPUType, Dict[str, Set[TaskAssignment]]] = defaultdict(
                 lambda: defaultdict(set))
-            for GPU_ID, variant_task_IDs in solver_result_.assignment.items():
-                for variant_task_ID_ in variant_task_IDs:
+            for GPU_ID, items in solver_result_.assignment.items():
+                for item in items:
+                    variant_task_ID_, proportion_of_max_comp = item
                     job_variant_ = JobVariant.from_variant_task_ID(variant_task_ID_)
                     GPU_type = self.GPU_type
-                    comp_, mem_ = variant_task_comp_mem_demands[variant_task_ID_]
+                    max_comp_, mem_ = variant_task_comp_mem_demands[variant_task_ID_]
 
+                    comp_ = math.ceil(max_comp_ * proportion_of_max_comp)
                     job_ID = job_variant_.job_ID
                     task_idx = JobVariant.variant_task_ID_idx(variant_task_ID_)
                     task = Task(job_ID=job_ID, task_idx=task_idx)
@@ -380,11 +392,12 @@ class MMKPScheduler(Scheduler):
 
         assigned_job_IDs = set(job_IDs).difference(unassigned_job_IDs)
 
-        def extract_spread_job_variants(solver_result_: SolverResult) -> List[JobVariant]:
+        def extract_spread_job_variants(solver_result_: SolverResultSC2) -> List[JobVariant]:
             job_variant_IDs = set()
-            for _, task_IDs in solver_result_.assignment.items():
-                for task_ID in task_IDs:
-                    job_variant = JobVariant.from_variant_task_ID(task_ID)
+            for _, items in solver_result_.assignment.items():
+                for item in items:
+                    variant_task_ID, _ = item
+                    job_variant = JobVariant.from_variant_task_ID(variant_task_ID)
                     job_variant_IDs.add(job_variant.variant_job_ID)
             return [JobVariant.from_variant_job_ID(job_variant_ID) for job_variant_ID in job_variant_IDs]
 

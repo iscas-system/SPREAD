@@ -58,6 +58,31 @@ class SolverParametersSC(BaseModel):
     task_comp_mem_requirements_and_profits: Dict[str, Tuple[int, int, float]]
     GPU_ID_to_node_id: Dict[str, str]
 
+class SolverParametersSC2(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    timeout: int
+    job_ID_to_spread_job_IDs: Dict[str, List[str]]
+    spread_job_ID_to_task_set: Dict[str, List[str]]
+    GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
+    spread_job_task_resource_demands: Dict[str, Tuple[int, int]]
+    spread_job_task_max_profit: Dict[str, Union[int, float]]
+    in_node_spread_job_IDs: List[str]
+    cross_node_spread_job_IDs: List[str]
+    GPU_ID_to_node_id: Dict[str, str]
+
+    # timeout: int,
+    #             job_ID_to_spread_job_IDs: Dict[str, List[str]],
+    #             spread_job_ID_to_task_set: Dict[str, List[str]],
+    #             GPU_comp_mem_capacity: Dict[str, Tuple[int, int]],
+    #             spread_job_task_resource_demands: Dict[str, Tuple[int, int]], # spread job ID to task resource demands
+    #             spread_job_max_profit: Dict[str, Union[int, float]], # spread job ID to max profit
+    #             in_node_spread_job_IDs: List[str],
+    #             cross_node_spread_job_IDs: List[str],
+    #             GPU_ID_to_node_id: Dict[str, str]
+
+
 class SolverResult(BaseModel):
     class Config:
         use_enum_values = True
@@ -69,6 +94,15 @@ class SolverResult(BaseModel):
     duration: int
     profit: int
     assignment: Dict[str, Set[str]]
+
+class SolverResultSC2(BaseModel):
+    class Config:
+        use_enum_values = True
+
+    solver_parameters_SC2: Optional[SolverParametersSC2]
+    duration: int
+    profit: int
+    assignment: Dict[str, Set[Tuple[str, float]]]
 
 
 class PartitionSolverParameters(BaseModel):
