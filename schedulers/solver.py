@@ -6,7 +6,7 @@ from typing import Dict, Tuple, Union, Optional, Set, List
 
 import gurobipy as gu
 from gurobipy import GRB
-
+import hashlib
 from log import *
 from model import SolverResult, SolverResultSC2, SolverParameters, SolverParameters2, SolverParameters3, SolverParametersSC, SolverParametersSC2, \
     PartitionSolverParameters, \
@@ -114,7 +114,7 @@ def do_MMKP_solve_SC_2(solver_params: SolverParametersSC2) -> Optional[SolverRes
     if solve_raw_res is None:
         return None
     assignment, profit = solve_raw_res
-    solver_result = SolverResultSC2(solver_parameters_SC=solver_params,
+    solver_result = SolverResultSC2(solver_parameters_SC2=solver_params,
                                  duration=(end - start),
                                  profit=profit,
                                  assignment=assignment)
@@ -203,22 +203,32 @@ class PartitionSolver:
                     partition_to_GPU_IDs[p].extend(taken_GPU_IDs)
 
         def round_strategy():
+            GPU_IDs = sorted(list(GPU_ID_to_node_id.keys()))
+            visited_GPU_IDs = set()
             for p in partitions:
-                while len(partition_to_GPU_IDs[p]) != partition_size:
-                    remaining_GPU_count = partition_size - len(partition_to_GPU_IDs[p])
-                    target_node_id = None
-                    for node_id, GPU_IDs in node_id_to_GPU_IDs.items():
-                        if len(GPU_IDs) == 0:
-                            continue
-                        target_node_id = node_id
-                        break
+                h = hashlib.md5(p.encode('utf8')).digest()[0]
+                GPU_ID_idx = abs(h)
+                interval = h ** 2
+                while len(partition_to_GPU_IDs[p]) != partition_size and len(visited_GPU_IDs) < len(GPU_IDs):
+                    unvisited_GPU_IDs = list(set(GPU_IDs).difference(visited_GPU_IDs))
+                    unvisited_GPU_IDs = sorted(unvisited_GPU_IDs)
+                    GPU_ID_idx = GPU_ID_idx + interval
+                    GPU_ID__ = unvisited_GPU_IDs[GPU_ID_idx % len(unvisited_GPU_IDs)]
+                    visited_GPU_IDs.add(GPU_ID__)
+                    partition_to_GPU_IDs[p].append(GPU_ID__)
 
-                    remaining_GPU_IDs = sorted(list(node_id_to_GPU_IDs[target_node_id]))
-                    taken_GPU_count = min(remaining_GPU_count, len(remaining_GPU_IDs))
-                    taken_GPU_IDs = remaining_GPU_IDs[:taken_GPU_count]
-                    for GPU_ID in taken_GPU_IDs:
-                        node_id_to_GPU_IDs[target_node_id].discard(GPU_ID)
-                    partition_to_GPU_IDs[p].extend(taken_GPU_IDs)
+                    # target_node_id = None
+                    # for node_id, GPU_IDs in node_id_to_GPU_IDs.items():
+                    #     if len(GPU_IDs) == 0:
+                    #         continue
+                    #     target_node_id = node_id
+                    #     break
+                    # remaining_GPU_IDs = sorted(list(node_id_to_GPU_IDs[target_node_id]))
+                    # taken_GPU_count = min(remaining_GPU_count, len(remaining_GPU_IDs))
+                    # taken_GPU_IDs = remaining_GPU_IDs[:taken_GPU_count]
+                    # for GPU_ID in taken_GPU_IDs:
+                    #     node_id_to_GPU_IDs[target_node_id].discard(GPU_ID)
+                    # partition_to_GPU_IDs[p].extend(taken_GPU_IDs)
 
         strategy_to_func = {
             "heuristic": heuristic_strategy,
@@ -1024,7 +1034,7 @@ class JobDistributionSolver:
             job_priority: List[str],
             strategy: str = "heuristic",  # "heuristic" "round"
     ) -> Dict[str, List[str]]:
-        partitions = partition_to_GPU_IDs.keys()
+        partitions = sorted(list(partition_to_GPU_IDs.keys()))
 
         def job_comp(j_):
             return job_comp_mem_demand[j_][0]
@@ -1032,7 +1042,9 @@ class JobDistributionSolver:
         def job_mem(j_):
             return job_comp_mem_demand[j_][1]
 
-        partition_to_jobs = defaultdict(list)
+        partition_to_jobs = dict()
+        for p_ in partitions:
+            partition_to_jobs[p_] = list()
 
         partition_to_cap = dict()
         for p_, GPU_IDs_ in partition_to_GPU_IDs.items():
@@ -1047,7 +1059,7 @@ class JobDistributionSolver:
             for p__ in partitions:
                 remain_comp_cap = partition_to_cap[p__][0] - job_comp(j_)
                 remain_mem_cap = partition_to_cap[p__][1] - job_mem(j_)
-                if remain_comp_cap < 0 or remain_mem_cap < 0:
+                if remain_comp_cap < 0 and remain_mem_cap < 0:
                     continue
                 remain_comp_cap_norm = 1. * remain_comp_cap / GPU_comp_mem_total_capacity[0]
                 remain_mem_cap_norm = 1. * remain_mem_cap / GPU_comp_mem_total_capacity[1]
@@ -1084,7 +1096,7 @@ class JobDistributionSolver:
             if p_ is None:
                 break
             partition_to_cap[p_][0] -= job_comp(job_)
-            partition_to_cap[p_][1] -= job_comp(job_)
+            partition_to_cap[p_][1] -= job_mem(job_)
             partition_to_jobs[p_].append(job_)
 
         return partition_to_jobs
@@ -1305,7 +1317,7 @@ def do_test_SC_2():
     }
 
     GPU_to_comp_mem_capacity = {
-        "RTX_2080Ti_0": (3, 22),
+        "RTX_2080Ti_0": (3, -2),
         "RTX_2080Ti_1": (5, 22),
         "RTX_2080Ti_2": (5, 22),
         "RTX_2080Ti_3": (5, 22),

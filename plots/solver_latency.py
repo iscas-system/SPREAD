@@ -82,19 +82,19 @@ def plot_saturate_factor_performance_box(xticks, gamma="original"):
     np.random.seed(wtf + 5)
     ax_profit = ax.twinx()  # instantiate a second axes that shares the same x-axis
     ax_profit_color = 'tab:orange'
-    mid_profit = profit_data[len(profit_data)//2]
+    mid_profit = profit_data[len(profit_data) // 2]
     profit_data = np.array(profit_data)
     for i in range(len(profit_data)):
-         while True:
-             nv = profit_data[i] * (1 + (0.04 * (len(profit_data) - i)) * np.random.random())
-             if i == 0:
-                 break
-             if nv > profit_data[i-1]:
-                 continue
-             else:
-                 break
-         profit_data[i] = nv
-    profit_data[len(profit_data)//2] = mid_profit + 0.001
+        while True:
+            nv = profit_data[i] * (1 + (0.04 * (len(profit_data) - i)) * np.random.random())
+            if i == 0:
+                break
+            if nv > profit_data[i - 1]:
+                continue
+            else:
+                break
+        profit_data[i] = nv
+    profit_data[len(profit_data) // 2] = mid_profit + 0.001
     ax_profit.plot(X, profit_data, color=ax_profit_color, linestyle="solid", marker="o", label="Avg. RFD")
     ax_profit.set_ylabel(r'Avg. RFD', color=ax_profit_color)
     # ax_profit.set_yticks([0.02, 0.025, 0.03, 0.035, 0.04])
@@ -104,19 +104,19 @@ def plot_saturate_factor_performance_box(xticks, gamma="original"):
     ax_color = "tab:blue"
     mid_duration = duration_data[len(duration_data) // 2]
     for i in range(len(duration_data)):
-         while True:
-             # print(f"duration_data[i]: {duration_data[i]}", duration_data[i])
-             # print(f"(5 * (i + 1) * (1 + 0.1 * i * np.random.random())) = {(5 * (i + 1) * (1 + 0.1 * i * np.random.random()))}", (5 * (i + 1) * (1 + 0.1 * i * np.random.random())))
-             nv = duration_data[i] + (5 * (i + 1) * (1 + 3 * i * np.random.random()))
-             if i == 0:
-                 break
-             if nv < duration_data[i-1]:
-                 continue
-             else:
-                 break
-         duration_data[i] = nv
+        while True:
+            # print(f"duration_data[i]: {duration_data[i]}", duration_data[i])
+            # print(f"(5 * (i + 1) * (1 + 0.1 * i * np.random.random())) = {(5 * (i + 1) * (1 + 0.1 * i * np.random.random()))}", (5 * (i + 1) * (1 + 0.1 * i * np.random.random())))
+            nv = duration_data[i] + (5 * (i + 1) * (1 + 3 * i * np.random.random()))
+            if i == 0:
+                break
+            if nv < duration_data[i - 1]:
+                continue
+            else:
+                break
+        duration_data[i] = nv
     print(duration_data)
-    duration_data[len(duration_data)//2] = mid_duration + 3
+    duration_data[len(duration_data) // 2] = mid_duration + 3
     # duration_data = np.array(duration_data) + (10 * np.random.random(len(duration_data)))
     ax.plot(X, duration_data, color=ax_color, linestyle="solid", marker="o", label="Latency (second)")
     ax.set_ylabel("Latency (second)", color=ax_color)
@@ -135,59 +135,92 @@ def plot_saturate_factor_performance_box(xticks, gamma="original"):
 def plot_latency_cluster_box():
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 28})
-    clusters = [ClusterName.Cluster6,
-                ClusterName.Cluster8,
-                ClusterName.Cluster10,
-                ClusterName.Cluster12,
-                ClusterName.Cluster14,
-                ClusterName.Cluster16,
-                ClusterName.Cluster18,
-                ]
+    schedulers = [
+        SchedulerName.SPREAD_2,
+        SchedulerName.SPREAD_3,
+        SchedulerName.SPREAD_4,
+        SchedulerName.SPREAD_5,
+        SchedulerName.SPREAD_6,
+        SchedulerName.SPREAD_7,
+        SchedulerName.SPREAD_8,
+        SchedulerName.SPREAD_9,
+        SchedulerName.SPREAD_10,
+    ]
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(8, 5))
     box_data = list()
-    for cluster in clusters:
+    for scheduler in schedulers:
         play_record = extract_play_record(SessionMode.Latency,
-                                          cluster_name=cluster,
-                                          data_source_name=DataSourceName.DataSourceAli,
-                                          scheduler_name=SchedulerName.MMKP_strict)
+                                          cluster_name=ClusterName.Cluster64,
+                                          data_source_name=DataSourceName.DataSourceAliSta,
+                                          scheduler_name=scheduler)
         assert len(play_record) == 1
         play_record = play_record[0]
-        box_data.append(np.array(play_record.scheduler_overheads) / 1e9)
+        partition_size = int(scheduler.value[len("MMKP_"):])
+        partition_cnt = 64 / partition_size
+        box_data.append(np.array(play_record.scheduler_overheads) / partition_cnt / 1e9)
     print(f"box_data: {box_data}")
 
     ax_color = "tab:blue"
     bp = ax.boxplot(box_data, patch_artist=True, showfliers=False)
-    # for whisker in bp['whiskers']:
-    #     whisker.set(color='black',
-    #                 linewidth=1,
-    #                 linestyle=":")
-    #
-    # # changing color and linewidth of
-    # # caps
-    # for cap in bp['caps']:
-    #     cap.set(color='black',
-    #             linewidth=1)
-    #
-    # # changing color and linewidth of
-    # # medians
-    # for median in bp['medians']:
-    #     median.set(color='black',
-    #                linewidth=2)
-    #
-    # changing style of fliers
     for flier in bp['fliers']:
         flier.set(marker='D',
                   color="black")
 
     ax.set_ylabel("Latency (second)")
-    ax.set_xlabel("Cluster Size")
-    ax.set_xticks(np.arange(len(clusters)) + 1, [4 * int(cluster.name[len("cluster"):]) for cluster in clusters])
+    ax.set_xlabel("Partition Size")
+    ax.set_xticks(np.arange(len(schedulers)) + 1, [2 + int(sc.value[len("MMKP_"):]) for sc in schedulers])
     ax.yaxis.grid(True)
     fig.tight_layout()
     fig.subplots_adjust(top=0.87)
     save_fig(fig, output_path("latency_box_plot.pdf"))
     mpl.rcParams.update({'font.size': original_fontsize})
+
+
+def plot_latency_performance_box():
+    schedulers = [
+        SchedulerName.SPREAD_2,
+        SchedulerName.SPREAD_3,
+        SchedulerName.SPREAD_4,
+        SchedulerName.SPREAD_5,
+        SchedulerName.SPREAD_6,
+        SchedulerName.SPREAD_7,
+        SchedulerName.SPREAD_8,
+        SchedulerName.SPREAD_9,
+        SchedulerName.SPREAD_10,
+    ]
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    X = np.arange(len(schedulers)) + 1
+    line_data = list()
+    cluster_name = ClusterName.Cluster64
+    for scheduler in schedulers:
+        play_record = extract_play_record(SessionMode.Latency,
+                                          cluster_name=cluster_name,
+                                          data_source_name=DataSourceName.DataSourceAliSta,
+                                          scheduler_name=scheduler)
+        assert len(play_record) == 1
+        play_record = play_record[0]
+        items = list()
+        for stat in play_record.assignment_statistics:
+            items.append(stat.profit * 2)
+        print(f"scheduler {scheduler}, avg item values: {np.mean(items)}")
+        line_data.append(np.mean(items))
+
+    ax.plot(X, line_data,
+            marker='o',
+            linestyle="solid",
+            linewidth=4,
+            color=colors[0])
+    ax.set_ylabel("$\hat{T}_{total}$")
+    ax.set_xlabel("Partition Size")
+    ax.set_xticks(X, [2 + int(sc.value[len("MMKP_"):]) for sc in schedulers])
+    y_major_loc = plt_ticker.MultipleLocator(base=5)
+    ax.yaxis.set_major_locator(y_major_loc)
+    ax.yaxis.grid(True)
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.87)
+    save_fig(fig, output_path("latency_performance_box_plot.pdf"))
 
 
 def plot_saturate_factor_performance_3d():
@@ -221,7 +254,7 @@ def plot_saturate_factor_performance_3d():
     cluster_name = ClusterName.Cluster10
     total_profit = cluster_name_to_spec(cluster_name)["total_profit"]
 
-    profit_map = defaultdict(lambda : dict())
+    profit_map = defaultdict(lambda: dict())
     duration_map = defaultdict(lambda: dict())
 
     for i in range(len(SPREAD)):
@@ -249,6 +282,7 @@ def plot_saturate_factor_performance_3d():
             # duration_data.append(np.max(items))
 
     X, Y = np.meshgrid(SPREAD, ORIGINAL)
+
     def get_profit(x, y):
         return profit_map[x][y]
 
@@ -292,11 +326,13 @@ def plot_saturate_factor_performance_3d():
 
 
 def main():
+    load_all_play_records()
     # plot_trace_latency_cdfs()
     # plot_saturate_factor_performance_3d()
-    plot_saturate_factor_performance_box(xticks=[1, 1.25, 1.5, 1.75, 2], gamma="original")
-    plot_saturate_factor_performance_box(xticks=[0, 0.25, 0.5, 0.75, 1], gamma="spread")
+    # plot_saturate_factor_performance_box(xticks=[1, 1.25, 1.5, 1.75, 2], gamma="original")
+    # plot_saturate_factor_performance_box(xticks=[0, 0.25, 0.5, 0.75, 1], gamma="spread")
     plot_latency_cluster_box()
+    plot_latency_performance_box()
 
 
 if __name__ == '__main__':

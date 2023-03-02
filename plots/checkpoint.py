@@ -3,6 +3,7 @@ import os
 import pathlib
 
 import numpy as np
+from collections import defaultdict
 from typing import List, Dict
 
 from record_preprocess import *
@@ -31,9 +32,9 @@ class CheckpointInfo:
         nanos = np.array(self.iteration_intervals)
         seconds = nanos / 1e9
         save_load_overhead = np.mean(seconds)
-        bandwidth = 100 * 1024 * 1024
+        bandwidth = 100 * 1024 * 1024 / 5
         transfer_overhead = self.checkpoint_size / bandwidth
-        overhead = save_load_overhead + transfer_overhead + 5
+        overhead = save_load_overhead + transfer_overhead + 3
         return overhead
 
 
@@ -57,7 +58,19 @@ def plot_checkpoint_overhead_bar():
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 24})
     fig, ax = plt.subplots(figsize=(10, 3))
-    model_names = [model_name for model_name in ModelName]
+    model_names = [
+        ModelName.SqueezeNet,
+        ModelName.YoloV5S,
+        ModelName.MobileNetV2,
+        ModelName.EfficientNet,
+        ModelName.GhostNet,
+        # ModelName.ShuffleNet,
+        # ModelName.HarDNet,
+        # ModelName.MEALV2,
+        ModelName.InceptionV3,
+        ModelName.ResNet18,
+        ModelName.ResNet50,
+    ]
     width = 0.25
     X = np.arange(len(model_names))
     y_data = list()
@@ -71,7 +84,8 @@ def plot_checkpoint_overhead_bar():
            linewidth=1)
 
     ax.yaxis.grid(True)
-    ax.set_xticks(X, labels=[model_name_spec(model_name)["label"] for model_name in ModelName], rotation=35)
+    ax.set_xticks(X, labels=[model_name_spec(model_name)["label"] for model_name in model_names], rotation=35)
+    ax.set_yticks([5, 10])
     ax.set_ylabel("Average Preemption\nDuration (second)")
     save_fig(fig, output_path("checkpoint_overhead_bar.pdf"))
     mpl.rcParams.update({'font.size': original_fontsize})
@@ -82,19 +96,17 @@ def plot_checkpoint_record_cdfs():
     mpl.rcParams.update({'font.size': 32})
     fig, ax = plt.subplots(figsize=(16, 6))
     data_source_names = [
-        DataSourceName.DataSourceAli,
-        DataSourceName.DataSourceAliFixNew,
-        DataSourceName.DataSourceAliUni,
-        DataSourceName.DataSourcePhi,
-        DataSourceName.DataSourcePhiFixNew,
-        DataSourceName.DataSourcePhiUni
+        DataSourceName.DataSourceAliDyn,
+        DataSourceName.DataSourceAliSta,
+        DataSourceName.DataSourcePhiDyn,
+        DataSourceName.DataSourcePhiSta,
     ]
     for data_source in data_source_names:
         spec = data_source_to_spec(data_source)
         play_record = extract_play_record(mode=SessionMode.Trace,
                                           data_source_name=data_source,
-                                          cluster_name=ClusterName.Cluster10GPUs,
-                                          scheduler_name=SchedulerName.MMKP_strict)
+                                          cluster_name=ClusterName.Cluster64,
+                                          scheduler_name=SchedulerName.SPREAD)
         assert len(play_record) == 1
         play_record = play_record[0]
         job_ID_to_preemptive_count = defaultdict(int)
@@ -104,7 +116,7 @@ def plot_checkpoint_record_cdfs():
         ratios = list()
         for done_job in play_record.done_records.values():
             runtime = done_job.completion_time - done_job.start_time
-            runtime /= 1e9
+            # runtime /= 1e9
             preemptive_count = job_ID_to_preemptive_count[done_job.job_ID]
             job_spec = play_record.job_specs[done_job.job_ID]
             total_preemptive_overhead = preemptive_count * checkpoint_infos[job_spec.model_name].avg_overhead()
@@ -133,6 +145,7 @@ def plot_checkpoint_record_cdfs():
 
 
 def main():
+    load_all_play_records()
     plot_checkpoint_overhead_bar()
     plot_checkpoint_record_cdfs()
 

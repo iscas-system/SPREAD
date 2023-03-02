@@ -18,20 +18,10 @@ class RRScheduler(Scheduler):
     def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[
         Assignments, Optional[Any]]:
         GPU_IDs = sorted(self.cluster.cluster_config.GPU_IDs)
-        if not preemptive:
-            GPU_ID_to_task_assignments = self.cluster.assignments.clone().GPU_ID_to_task_assignments
-        else:
-            GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]] = defaultdict(set)
-        job_IDs = set()
-        if not preemptive:
-            for job in self.cluster.jobs.values():
-                if job.job_ID not in self.cluster.assignments.job_ID_to_task_assignments:
-                    job_IDs.add(job.job_ID)
-        else:
-            job_IDs = list(self.cluster.jobs.keys())
+        GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive)
         job_IDs = Sorter.sort(jobs=[self.cluster.jobs[job_ID] for job_ID in job_IDs], data_source=self.data_source,
                               priority_type=self.priority_type)
-        job_IDs = job_IDs[:150]
+        job_IDs = job_IDs[:128]
         assignments = RRScheduler.assign_jobs(self.cluster.cluster_config, self.data_source, job_IDs,
                                               GPU_IDs, self.GPU_type, GPU_ID_to_task_assignments)
         # oversupplied_assignments = assignments.supplement_over_supply()
@@ -90,8 +80,7 @@ class RRScheduler(Scheduler):
                    GPU_IDs: List[str],
                    GPU_ID_to_task_assignments: Dict[str, Set[TaskAssignment]]) -> Tuple[int, bool]:
         original_GPU_ID_idx = curr_GPU_ID_idx
-        job_spec = data_source.get_job_spec(job_ID=job_ID)
-        worker_count = job_spec.plan_worker_count
+        worker_count = 1
         GPU_ID_tried = set()
         GPU_IDs_selected = set()
         comp_requirement, _ = data_source.job_maximized_performance_comp(job_ID=job_ID, GPU_type=GPU_type, worker_count=worker_count, cross_node=False)

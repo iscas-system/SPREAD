@@ -67,7 +67,7 @@ class SolverParametersSC2(BaseModel):
     spread_job_ID_to_task_set: Dict[str, List[str]]
     GPU_comp_mem_capacity: Dict[str, Tuple[int, int]]
     spread_job_task_resource_demands: Dict[str, Tuple[int, int]]
-    spread_job_task_max_profit: Dict[str, Union[int, float]]
+    spread_job_task_max_profit: Dict[str, float]
     in_node_spread_job_IDs: List[str]
     cross_node_spread_job_IDs: List[str]
     GPU_ID_to_node_id: Dict[str, str]

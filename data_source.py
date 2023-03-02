@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from config import DataSourceConfig, get_config
+from config import DataSourceConfig, get_config, job_deploy_specs
 from log import info
 from object import GPUType, JobSpec, ModelName, to_normalized_memory, CompCapacity
 
@@ -273,13 +273,24 @@ class DataSource:
         self.iteration_time_cache_df = pd.DataFrame(
             columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "iteration_time_nano",
                      "comp"])
-        self.iteration_time_cache_df_index = ["model_name", "comp", "batch_size", "worker_count", "GPU_type", "cross_node"]
+        self.iteration_time_cache_df_index = ["model_name", "comp", "batch_size", "worker_count", "GPU_type",
+                                              "cross_node"]
         self.iteration_time_cache_df = self.iteration_time_cache_df.set_index(self.iteration_time_cache_df_index)
+
+        self.utilization_cache_df = pd.DataFrame(
+            columns=["model_name", "GPU_type", "batch_size", "worker_count", "cross_node", "utilization",
+                     "comp"])
+        self.utilization_cache_df_index = ["model_name", "comp", "batch_size", "worker_count", "GPU_type",
+                                           "cross_node"]
+        self.utilization_cache_df = self.utilization_cache_df.set_index(self.utilization_cache_df_index)
+
         self.model_maximized_performance_comps_cache = pd.DataFrame(
             columns=["model_name", "batch_size", "GPU_type", "worker_count", "cross_node", "iteration_time_nano",
                      "comp"])
-        self.model_maximized_performance_comps_cache_index = ["model_name", "batch_size", "GPU_type", "worker_count", "cross_node"]
-        self.model_maximized_performance_comps_cache = self.model_maximized_performance_comps_cache.set_index(self.model_maximized_performance_comps_cache_index)
+        self.model_maximized_performance_comps_cache_index = ["model_name", "batch_size", "GPU_type", "worker_count",
+                                                              "cross_node"]
+        self.model_maximized_performance_comps_cache = self.model_maximized_performance_comps_cache.set_index(
+            self.model_maximized_performance_comps_cache_index)
 
     def get_job_spec(self, job_ID: str) -> JobSpec:
         return self.job_specs_dict[job_ID]
@@ -305,20 +316,11 @@ class DataSource:
                             comp_req: float) -> Optional[int]:
         # find in cache first
         df = self.iteration_time_cache_df
-        # filtered = df.query(
-        #     f"model_name == '{model_name.name}' & "
-        #     f"comp == {comp_req} & "
-        #     f"batch_size == {batch_size} & "
-        #     f"GPU_type == '{GPU_type.name}' & "
-        #     f"worker_count == {worker_count} & "
-        #     f"cross_node == {cross_node}"
-        # )
-        # assert len(filtered) <= 1
-        # if len(filtered) == 1:
-        #     d = filtered.iloc[0].to_dict()
-        #     return d["iteration_time_nano"]
+
         try:
-            iteration_time_nano = df.loc[(model_name.name, comp_req, batch_size, worker_count, GPU_type.name, cross_node)]["iteration_time_nano"]
+            iteration_time_nano = \
+            df.loc[(model_name.name, comp_req, batch_size, worker_count, GPU_type.name, cross_node)][
+                "iteration_time_nano"]
             return iteration_time_nano
         except KeyError:
             pass
@@ -349,10 +351,12 @@ class DataSource:
                     break
             less_idx = greater_idx - 1 if greater_idx > 0 else 0
             if less_idx == greater_idx:
-                base_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=worker_batch_size,
+                base_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
+                                                                  batch_size=worker_batch_size,
                                                                   GPU_type=GPU_type, worker_count=1,
                                                                   computation_proportion=50)
-                self_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=worker_batch_size,
+                self_info_comp_50 = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name],
+                                                                  batch_size=worker_batch_size,
                                                                   GPU_type=GPU_type, worker_count=worker_count,
                                                                   cross_node=cross_node, computation_proportion=50)
                 assert len(base_info_comp_50) == 1 and len(base_info_comp_50) == 1
@@ -361,6 +365,8 @@ class DataSource:
                 base_info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=worker_batch_size,
                                                           GPU_type=GPU_type, worker_count=1,
                                                           computation_proportion=computation_proportion)
+                if len(base_info) != 1:
+                    info(f"{model_name} {worker_batch_size} {computation_proportion}")
                 assert len(base_info) == 1
                 with_overhead = base_info[0].avg_stabled_iteration_interval + comm_overhead
                 return with_overhead
@@ -389,37 +395,73 @@ class DataSource:
 
         return iteration_time_nano
 
-    def computation_utilization(self, model_name: ModelName,
+    def computation_utilization(self,
+                                model_name: ModelName,
                                 batch_size: int,
-                                GPU_type: GPUType, worker_count: int,
-                                comp_req: float) -> float:
-        batch_size = batch_size // worker_count
-        computation_proportion = int(comp_req * (100 // CompCapacity))
-        info = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], GPU_type=GPU_type, batch_size=batch_size,
-                                             computation_proportion=computation_proportion, worker_count=worker_count)
-        if len(info) == 1:
-            return info[0].avg_stabled_utilization
-        infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name], batch_size=batch_size, GPU_type=GPU_type,
-                                              worker_count=worker_count)
-        infos = MonoJobExecInfoLoader.sort_by_computation(infos)
-        greater_idx = 0
-        for i, info in enumerate(infos):
-            if info.computation_proportion > computation_proportion:
-                greater_idx = i
-                break
-        less_idx = greater_idx - 1 if greater_idx > 0 else 0
-        if less_idx == greater_idx:
-            comp = infos[less_idx].computation_proportion
-            return infos[less_idx].avg_stabled_utilization / (computation_proportion / comp)
-        less_comp = infos[less_idx].computation_proportion
-        greater_comp = infos[greater_idx].computation_proportion
-        utilization_diff = infos[greater_idx].avg_stabled_utilization - infos[
-            less_idx].avg_stabled_utilization
-        comp_diff = greater_comp - less_comp
-        k = utilization_diff / comp_diff
-        stabled_utilization = infos[
-                                  less_idx].avg_stabled_utilization + k * (computation_proportion - less_comp)
-        return stabled_utilization
+                                GPU_type: GPUType,
+                                worker_count: int,
+                                comp_req: float,
+                                cross_node: bool) -> float:
+        df = self.utilization_cache_df
+
+        try:
+            utilization = \
+                df.loc[(model_name.name, comp_req, batch_size, worker_count, GPU_type.name, cross_node)][
+                    "utilization"]
+            return utilization
+        except KeyError:
+            pass
+
+        def calculate(model_name_: ModelName,
+                      batch_size_: int,
+                      GPU_type_: GPUType,
+                      worker_count_: int,
+                      comp_req_: float,
+                      cross_node_: bool):
+            batch_size_ = batch_size_ // worker_count_
+            computation_proportion = int(comp_req_ * (100 // CompCapacity))
+            info_ = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name_], GPU_type=GPU_type_,
+                                                 batch_size=batch_size_,
+                                                 computation_proportion=computation_proportion,
+                                                 worker_count=worker_count_, cross_node=cross_node_)
+            if len(info_) == 1:
+                return info_[0].avg_stabled_utilization
+            infos = MonoJobExecInfoLoader.extract(self.mono_job_data[model_name_], batch_size=batch_size_,
+                                                  GPU_type=GPU_type_,
+                                                  worker_count=worker_count_)
+            infos = MonoJobExecInfoLoader.sort_by_computation(infos)
+            greater_idx = 0
+            for i, info_ in enumerate(infos):
+                if info_.computation_proportion > computation_proportion:
+                    greater_idx = i
+                    break
+            less_idx = greater_idx - 1 if greater_idx > 0 else 0
+            if less_idx == greater_idx:
+                comp = infos[less_idx].computation_proportion
+                return infos[less_idx].avg_stabled_utilization / (computation_proportion / comp)
+            less_comp = infos[less_idx].computation_proportion
+            greater_comp = infos[greater_idx].computation_proportion
+            utilization_diff = infos[greater_idx].avg_stabled_utilization - infos[
+                less_idx].avg_stabled_utilization
+            comp_diff = greater_comp - less_comp
+            k = utilization_diff / comp_diff
+            stabled_utilization = infos[
+                                      less_idx].avg_stabled_utilization + k * (computation_proportion - less_comp)
+            return stabled_utilization
+
+        u = calculate(model_name, batch_size, GPU_type, worker_count, comp_req, cross_node)
+        new_record = pd.DataFrame([{
+            "model_name": model_name.name,
+            "comp": comp_req,
+            "GPU_type": GPU_type.name,
+            "batch_size": batch_size,
+            "worker_count": worker_count,
+            "cross_node": cross_node,
+            "utilization": u
+        }]).set_index(self.utilization_cache_df_index)
+        df = pd.concat([self.utilization_cache_df, new_record])
+        self.utilization_cache_df = df
+        return u
 
     def get_job_task_memory(self,
                             job_ID: str,
@@ -518,20 +560,47 @@ class DataSource:
 
     def job_maximized_performance_comp(self, job_ID: str, GPU_type: GPUType, worker_count: int, cross_node: bool) -> \
             Tuple[int, int]:
+        """
+        :param job_ID:
+        :param GPU_type:
+        :param worker_count:
+        :param cross_node:
+        :return: (max_comp, max_performance)
+        """
         job_spec = self.job_specs_dict[job_ID]
         return self.model_maximized_performance_comp(model_name=job_spec.model_name, batch_size=job_spec.batch_size,
                                                      GPU_type=GPU_type, worker_count=worker_count,
                                                      cross_node=cross_node)
 
-    def job_task_computation_utilization(self, job_ID: str, GPU_type: GPUType, comp_req: float,
-                                         worker_count: int) -> float:
+    def job_maximized_performance(self, job_ID: str, GPU_type: GPUType):
+        job_spec = self.job_specs_dict[job_ID]
+        min_iter_nano = int(1e16)
+        max_spec = None
+        for spec in job_deploy_specs:
+            cross_node, worker_count = spec
+            _, iter_nano = self.model_maximized_performance_comp(model_name=job_spec.model_name,
+                                                                 batch_size=job_spec.batch_size,
+                                                                 GPU_type=GPU_type, worker_count=worker_count,
+                                                                 cross_node=cross_node)
+            if iter_nano < min_iter_nano:
+                min_iter_nano = iter_nano
+                max_spec = spec
+        return min_iter_nano, max_spec
+
+    def job_task_computation_utilization(self,
+                                         job_ID: str,
+                                         GPU_type: GPUType,
+                                         comp_req: float,
+                                         worker_count: int,
+                                         cross_node: bool) -> float:
         job_spec = self.job_specs_dict[job_ID]
         utilization = self.computation_utilization(
             model_name=job_spec.model_name,
             batch_size=job_spec.batch_size,
             GPU_type=GPU_type,
             worker_count=worker_count,
-            comp_req=comp_req
+            comp_req=comp_req,
+            cross_node=cross_node,
         )
         return utilization
 
@@ -641,6 +710,8 @@ class DataSource:
 
     @staticmethod
     def run_time_converter(run_time: int):
+        while run_time < 30 * 60:
+            run_time *= 2
         return run_time
 
     @staticmethod

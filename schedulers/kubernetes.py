@@ -30,15 +30,17 @@ class KubeScheduler(Scheduler):
             if len(remain_GPU_ID_comp_mem_list) == 0:
                 break
             remain_GPU_ID_comp_mem_list.sort(key=lambda t: t[0], reverse=True)
-            window_size = job_spec.plan_worker_count
-            _, task_mem = self.data_source.get_job_task_memory(job_ID, job_spec.plan_worker_count)
+            worker_count = 1
+            window_size = worker_count
+            comp_req = CompCapacity
+            _, task_mem = self.data_source.get_job_task_memory(job_ID, worker_count)
             comp_enough_GPU_ID_com_mem_slice_list: List[Tuple[List[GPU_ID_comp_mem_type], float]] = list()
             for i in range(len(remain_GPU_ID_comp_mem_list) - window_size + 1):
                 comp_enough = True
                 slice_GPU_ID_comp_mem = remain_GPU_ID_comp_mem_list[i: i + window_size]
                 slice_total_resource = 0
                 for sliding_idx, item in enumerate(slice_GPU_ID_comp_mem):
-                    if item.comp < job_spec.plan_comp:
+                    if item.comp < comp_req:
                         comp_enough = False
                         continue
                     slice_total_resource += item.comp / CompCapacity
@@ -54,13 +56,13 @@ class KubeScheduler(Scheduler):
             if len(comp_enough_GPU_ID_com_mem_slice_list) == 0:
                 continue
             slice_GPU_ID_comp_mem = comp_enough_GPU_ID_com_mem_slice_list[0][0]
-            for task_idx in range(job_spec.plan_worker_count):
+            for task_idx in range(worker_count):
                 GPU_ID_comp_mem = slice_GPU_ID_comp_mem[task_idx]
                 GPU_ID, _, _ = GPU_ID_comp_mem
                 task_assignment = TaskAssignment(GPU_ID=GPU_ID,
                                                  GPU_type=self.GPU_type,
                                                  task=Task(job_ID=job_ID, task_idx=task_idx),
-                                                 comp_req=job_spec.plan_comp,
+                                                 comp_req=comp_req,
                                                  memory=task_mem)
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
         assignments = Assignments.from_GPU_ID_to_task_assignments(

@@ -1,14 +1,42 @@
-import os
-from typing import Dict, List
-from mono_job_data_preprocess import *
-from enum import Enum
 import json
+import os
 import pathlib
 from collections import defaultdict
-from common import colors
+from enum import Enum
+from typing import Dict
 
+from common import colors
+from mono_job_data_preprocess import *
+
+class LOAD_UTIL_CONFIG:
+    LOAD_UTIL = False
 
 class SchedulerName(Enum):
+    SPREAD = "MMKP"
+    SPREAD_PRIME = "MMKP_no_spread"
+    SPREAD_RR_PARTI = "MMKP_RR_partition"
+    SPREAD_RR_DISTRI = "MMKP_RR_distribution"
+    SPREAD_RR_PARTI_DISTRI = "MMKP_RR_partition_distribution"
+
+    SPREAD_2 = "MMKP_2"
+    SPREAD_3 = "MMKP_3"
+    SPREAD_4 = "MMKP_4"
+    SPREAD_5 = "MMKP_5"
+    SPREAD_6 = "MMKP_6"
+    SPREAD_7 = "MMKP_7"
+    SPREAD_8 = "MMKP_8"
+    SPREAD_9 = "MMKP_9"
+    SPREAD_10 = "MMKP_10"
+
+    RoundRobin = "RoundRobin"
+    KubeShare = "KubeShare"
+    BestFit = "BestFit"
+    AFS = "AFS"
+    Tiresias = "Tiresias"
+    Gavel = "Gavel"
+    Kubernetes = "Kubernetes"
+
+    MMKP = "MMKP_strict"
     MMKP_strict = "MMKP_strict"
     MMKP_strict_rand_3 = "MMKP_strict_rand_3"
     MMKP_strict_rand_variants = "MMKP_strict_rand_variants"
@@ -18,11 +46,6 @@ class SchedulerName(Enum):
     MMKP_best_effort = "MMKP_best_effort"
     RoundRobin_strict = "RoundRobin_strict"
     RoundRobin_best_effort = "RoundRobin_best_effort"
-    KubeShare = "KubeShare"
-    BestFit = "BestFit"
-    Tiresias = "Tiresias"
-    Gavel = "Gavel"
-    Kubernetes = "Kubernetes"
 
     MMKP_strict_05 = "MMKP_strict_05"
     MMKP_strict_075 = "MMKP_strict_075"
@@ -68,6 +91,7 @@ class SessionMode(Enum):
     Latency = "latency"
     SaturateFactor = "saturate_factor"
 
+
 def scheduler_to_spec(scheduler_name: SchedulerName):
     # schedulers = [SchedulerName.MMKP_strict,
     #                   SchedulerName.KubeShare,
@@ -76,6 +100,13 @@ def scheduler_to_spec(scheduler_name: SchedulerName):
     #                   SchedulerName.BestFit,
     #                   SchedulerName.Kubernetes]
     return {
+        SchedulerName.SPREAD: {
+            "label": "SPREAD",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
         SchedulerName.MMKP_strict: {
             "label": "SPREAD",
             "color": colors[0],
@@ -101,6 +132,95 @@ def scheduler_to_spec(scheduler_name: SchedulerName):
             "label": "SPREAD$^\prime$",
             "color": colors[1],
             "zorder": 9,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_PRIME: {
+            "label": "SPREAD$^\prime$",
+            "color": colors[1],
+            "zorder": 9,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_RR_PARTI: {
+            "label": "SPREAD (w/o P)",
+            "color": colors[2],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_RR_DISTRI: {
+            "label": "SPREAD (w/o D)",
+            "color": colors[3],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_RR_PARTI_DISTRI: {
+            "label": "SPREAD (w/o P&D)",
+            "color": colors[5],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_2: {
+            "label": "SPREAD_2",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_3: {
+            "label": "SPREAD_3",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_4: {
+            "label": "SPREAD_4",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_5: {
+            "label": "SPREAD_5",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_6: {
+            "label": "SPREAD_6",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_7: {
+            "label": "SPREAD_7",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        }, SchedulerName.SPREAD_8: {
+            "label": "SPREAD_8",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        }, SchedulerName.SPREAD_9: {
+            "label": "SPREAD_9",
+            "color": colors[0],
+            "zorder": 10,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.SPREAD_10: {
+            "label": "SPREAD_10",
+            "color": colors[0],
+            "zorder": 10,
             "linestyle": "solid",
             "linewidth": 4,
         },
@@ -146,8 +266,22 @@ def scheduler_to_spec(scheduler_name: SchedulerName):
             "linestyle": "solid",
             "linewidth": 4,
         },
+        SchedulerName.RoundRobin: {
+            "label": "RR",
+            "color": colors[5],
+            "zorder": 5,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
         SchedulerName.BestFit: {
             "label": "BestFit",
+            "color": colors[6],
+            "zorder": 4,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.AFS: {
+            "label": "AFS",
             "color": colors[6],
             "zorder": 4,
             "linestyle": "solid",
@@ -175,6 +309,10 @@ class DataSourceName(Enum):
     DataSourcePhiFixNew = "data_source_phi_fix_new"
     DataSourceAliUni = "data_source_ali_uni"
 
+    DataSourceAliDyn = "data_source_ali_trace"
+    DataSourceAliSta = "data_source_ali_static"
+    DataSourcePhiDyn = "data_source_phi_trace"
+    DataSourcePhiSta = "data_source_phi_static"
 
 
 def data_source_to_spec(data_source_name: DataSourceName):
@@ -207,6 +345,23 @@ def data_source_to_spec(data_source_name: DataSourceName):
             "label": "PHI_FIX",
             "color": colors[5],
         },
+        DataSourceName.DataSourceAliDyn: {
+            "label": "ALI_DYN",
+            "color": colors[1]
+        },
+        DataSourceName.DataSourcePhiDyn: {
+            "label": "PHI_DYN",
+            "color": colors[2]
+        },
+        DataSourceName.DataSourceAliSta: {
+            "label": "ALI_STA",
+            "color": colors[3]
+        },
+        DataSourceName.DataSourcePhiSta: {
+            "label": "PHI_STA",
+            "color": colors[4]
+        }
+
     }[data_source_name]
 
 
@@ -221,6 +376,8 @@ class ClusterName(Enum):
     Cluster16 = "cluster_16"
     Cluster18 = "cluster_18"
 
+    Cluster64 = "cluster_64"
+
 
 def cluster_name_to_spec(cluster_name: ClusterName):
     return {
@@ -231,6 +388,7 @@ def cluster_name_to_spec(cluster_name: ClusterName):
             "total_profit": 20
         }
     }[cluster_name]
+
 
 class PlayRecord:
     def __init__(self,
@@ -270,9 +428,10 @@ class PreemptiveRecord:
 
 
 class DoneRecord:
-    def __init__(self, job_ID: str, start_time: int, completion_time: int):
+    def __init__(self, job_ID: str, start_time: int, submit_time: int, completion_time: int):
         self.job_ID: str = job_ID
         self.start_time: int = start_time
+        self.submit_time: int = submit_time
         self.completion_time: int = completion_time
 
     @staticmethod
@@ -280,6 +439,7 @@ class DoneRecord:
         return DoneRecord(
             job_ID=json_item["job_ID"],
             start_time=int(json_item["start_time"]),
+            submit_time=int(json_item["submit_time"]),
             completion_time=int(json_item["completion_time"]))
 
 
@@ -320,95 +480,100 @@ class JobSpec:
         )
 
 
+# "now": 0,
+# 			"preemptive": true,
+# 			"cluster_real_total_mem": 755914244096,
+# 			"profit": 0.4605641095340592,
+# 			"deployed_job_size": 1,
+# 			"deployed_dist_job_size": 0,
+# 			"deployed_spread_job_size": 0,
+# 			"job_ID_to_assignment_repr": {
+# 				"job_ID_100": "job_ID_100|1|5|False"
+# 			}
 class AssignmentStatistics:
     def __init__(self,
                  now: int,
                  preemptive: bool,
-                 job_over_supply: Dict[str, int],
-                 total_over_supply: int,
-                 job_lack_supply: Dict[str, int],
-                 total_lack_supply: int,
-                 job_comp_util: Dict[str, float],
-                 total_comp_util: float,
-                 job_real_mem: Dict[str, int],
-                 total_real_mem: int,
                  cluster_real_total_mem: int,
-                 total_mem_utilization: float,
                  profit: float,
                  deployed_job_size: int,
                  deployed_dist_job_size: int,
                  deployed_spread_job_size: int,
-                 job_ID_to_task_assignments: Dict[str, 'TaskAssignment']
+                 job_ID_to_deploy: Dict[str, 'JobDeploy']
                  ):
         self.now: int = now
         self.preemptive: bool = preemptive
-        self.job_over_supply: Dict[str, int] = job_over_supply
-        self.total_over_supply: int = total_over_supply
-        self.job_lack_supply: Dict[str, int] = job_lack_supply
-        self.total_lack_supply: int = total_lack_supply
-        self.job_comp_util: Dict[str, float] = job_comp_util
-        self.total_comp_util: float = total_comp_util
-        self.job_real_mem: Dict[str, int] = job_real_mem
-        self.total_real_mem: int = total_real_mem
         self.cluster_real_total_mem: int = cluster_real_total_mem
-        self.total_mem_utilization: float = total_mem_utilization
         self.profit: float = profit
         self.deployed_job_size: int = deployed_job_size
         self.deployed_dist_job_size: int = deployed_dist_job_size
         self.deployed_spread_job_size: int = deployed_spread_job_size
-        self.job_ID_to_task_assignments: Dict[str, 'TaskAssignment'] = job_ID_to_task_assignments
+        self.job_ID_to_deploy: Dict[str, 'JobDeploy'] = job_ID_to_deploy
+        self.__init_cross_node_job_size()
+        self.__init_comp_util()
+
+    def __init_cross_node_job_size(self):
+        self.deployed_cross_node_job_size = 0
+        for d in self.job_ID_to_deploy.values():
+            if d.worker_count == 1:
+                continue
+            if d.cross_node:
+                self.deployed_cross_node_job_size += 1
+
+    def __init_comp_util(self, ):
+        self.total_comp_util = np.sum([d.utilization for d in self.job_ID_to_deploy.values()])
 
     @staticmethod
-    def from_json(json_item: Dict):
-        job_ID_to_task_assignments: Dict[str, 'TaskAssignment'] = dict()
-        for job_ID, task_assignments in json_item["job_ID_to_task_assignments"].items():
-            for task_assignment in task_assignments:
-                task_assignment = TaskAssignment.from_json(task_assignment)
-                job_ID_to_task_assignments[job_ID] = task_assignment
+    def from_json(data_source: DataSource, json_item: Dict):
+        job_ID_to_assignment_repr: Dict[str, 'JobDeploy'] = dict()
+        for job_ID, repr_ in json_item["job_ID_to_assignment_repr"].items():
+            job_ID_to_assignment_repr[job_ID] = JobDeploy.from_repr(data_source, repr_)
+
         return AssignmentStatistics(
             now=int(json_item["now"]),
             preemptive=bool(json_item["preemptive"]),
-            job_over_supply=json_item["job_over_supply"],
-            total_over_supply=int(json_item["total_over_supply"]),
-            total_comp_util=int(json_item["total_comp_util"]),
-            job_lack_supply=json_item["job_lack_supply"],
-            total_lack_supply=int(json_item["total_lack_supply"]),
-            job_comp_util={job_ID: float(comp_util) for job_ID, comp_util in json_item["job_comp_util"].items()},
-            job_real_mem={job_ID: int(real_mem) for job_ID, real_mem in json_item["job_real_mem"].items()},
-            total_real_mem=int(json_item["total_real_mem"]),
             cluster_real_total_mem=int(json_item["cluster_real_total_mem"]),
-            total_mem_utilization=float(json_item["total_mem_utilization"]),
             profit=float(json_item["profit"]),
             deployed_job_size=int(json_item["deployed_job_size"]),
             deployed_dist_job_size=int(json_item["deployed_dist_job_size"]),
             deployed_spread_job_size=int(json_item.get("deployed_spread_job_size", 0)),
-            job_ID_to_task_assignments=job_ID_to_task_assignments,
+            job_ID_to_deploy=job_ID_to_assignment_repr,
         )
 
-class TaskAssignment:
+
+class JobDeploy:
     def __init__(self,
-                 over_supplied: int,
-                 comp_req: int,
-                 memory: int,
-                 task_ID: str,
                  job_ID: str,
-                 task_idx: int):
-        self.over_supplied: int = over_supplied
-        self.comp_req: int = comp_req
-        self.memory: int = memory
-        self.task_ID: str = task_ID
+                 comp_req: int,
+                 worker_count: int,
+                 cross_node: bool,
+                 utilization: float):
         self.job_ID: str = job_ID
-        self.task_idx: int = task_idx
+        self.comp_req: int = comp_req
+        self.worker_count: int = worker_count
+        self.cross_node: int = cross_node
+        self.utilization: float = utilization
 
     @staticmethod
-    def from_json(json_item: Dict):
-        return TaskAssignment(
-            over_supplied=int(json_item["over_supplied"]),
-            comp_req=int(json_item["comp_req"]),
-            memory=int(json_item["memory"]),
-            task_ID=json_item["task_ID"],
-            job_ID=json_item["job_ID"],
-            task_idx=int(json_item["task_idx"])
+    def from_repr(data_source: DataSource, s: str):
+        # "job_ID_100|1|5|False"
+        group = s.split("|")
+        job_ID = group[0]
+        worker_count = int(group[1])
+        comp_req = int(group[2])
+        cross_node = group[3] == "True"
+        util = 0
+        if LOAD_UTIL_CONFIG.LOAD_UTIL:
+            util = data_source.job_task_computation_utilization(job_ID=job_ID, GPU_type=GPUType.RTX_2080Ti,
+                                                            comp_req=comp_req, worker_count=worker_count,
+                                                            cross_node=cross_node)
+            util *= worker_count
+        return JobDeploy(
+            job_ID=job_ID,
+            comp_req=comp_req,
+            worker_count=worker_count,
+            cross_node=cross_node,
+            utilization=util
         )
 
 
@@ -419,22 +584,35 @@ def predicate_item(item, predicate):
     return predicate(item) if item is not None else True
 
 
-def extract_play_record(mode: SessionMode=SessionMode.Trace,
-                        data_source_name: DataSourceName=None,
-                        cluster_name: ClusterName=None,
-                        scheduler_name: SchedulerName=None) -> List[PlayRecord]:
+def extract_play_record(mode: SessionMode = SessionMode.Trace,
+                        data_source_name: DataSourceName = None,
+                        cluster_name: ClusterName = None,
+                        scheduler_name: SchedulerName = None) -> List[PlayRecord]:
     return list(filter(lambda info:
                        (predicate_item(data_source_name, lambda ds: info.data_source_name == ds)) and \
                        (predicate_item(cluster_name, lambda cn: info.cluster_name == cn)) and \
                        (predicate_item(scheduler_name, lambda sn: info.scheduler_name == sn)),
                        play_records[mode]))
 
-
+data_source_dict = dict()
 def load_all_play_records():
+    data_source_names = [
+        DataSourceName.DataSourceAliDyn,
+        DataSourceName.DataSourceAliSta,
+        DataSourceName.DataSourcePhiDyn,
+        DataSourceName.DataSourcePhiSta
+    ]
+
+    for data_source_name in data_source_names:
+        data_source_dict[data_source_name] = get_data_source(data_source_name=data_source_name.value,
+                                                             enabled_GPU_types={GPUType.RTX_2080Ti})
+    print("Data sources loaded")
+
     def load_mode_records(mode: SessionMode):
         path = str(pathlib.Path(__file__).parent / "datas" / "reports")
         player_dirs = os.listdir(path)
-        mapping: Dict[SchedulerName, Dict[DataSourceName, Dict[ClusterName, PlayRecord]]] = defaultdict(lambda : defaultdict(lambda :dict()))
+        mapping: Dict[SchedulerName, Dict[DataSourceName, Dict[ClusterName, PlayRecord]]] = defaultdict(
+            lambda: defaultdict(lambda: dict()))
         for player_dir in player_dirs:
             dir_name = pathlib.Path(player_dir).name
             if not dir_name.startswith("Player"):
@@ -460,7 +638,7 @@ def load_all_play_records():
                             play_record = mapping[scheduler_name][data_source_config_name][cluster_config_name]
                             if play_record.record_time > time:
                                 continue
-
+                data_source = data_source_dict[data_source_config_name]
                 preemptive_records: List[PreemptiveRecord] = list()
                 for item in d["preemptive_records"]:
                     preemptive_record = PreemptiveRecord.from_json(item)
@@ -476,7 +654,7 @@ def load_all_play_records():
                     job_specs[job_spec.job_ID] = job_spec
                 assignment_statistics: List[AssignmentStatistics] = list()
                 for item in d["assignment_statistics"]:
-                    assignment_statistic = AssignmentStatistics.from_json(item)
+                    assignment_statistic = AssignmentStatistics.from_json(data_source, item)
                     assignment_statistics.append(assignment_statistic)
                 schedule_reports: List = list()
                 for item in d.get("schedule_reports", list()):
@@ -493,21 +671,23 @@ def load_all_play_records():
                     job_specs=job_specs,
                     assignment_statistics=assignment_statistics
                 )
-                mapping[play_record.scheduler_name][play_record.data_source_name][play_record.cluster_name] = play_record
+                mapping[play_record.scheduler_name][play_record.data_source_name][
+                    play_record.cluster_name] = play_record
+                print(f"json file: {json_path} loaded")
         records = list()
         for d_1 in mapping.values():
             for d_2 in d_1.values():
                 for play_record in d_2.values():
                     records.append(play_record)
         return records
-    play_records[SessionMode.Trace] = load_mode_records(SessionMode.Trace)
-    play_records[SessionMode.RandomPlacement] = load_mode_records(SessionMode.RandomPlacement)
-    play_records[SessionMode.Selectors] = load_mode_records(SessionMode.Selectors)
-    play_records[SessionMode.Latency] = load_mode_records(SessionMode.Latency)
-    play_records[SessionMode.SaturateFactor] = load_mode_records(SessionMode.SaturateFactor)
+
+    for session_mode in [SessionMode.Trace, SessionMode.RandomPlacement, SessionMode.Latency]:
+        play_records[session_mode] = load_mode_records(session_mode)
+        print(f"{session_mode} session loaded")
 
 
-load_all_play_records()
+# load_all_play_records()
 
 if __name__ == '__main__':
-    print(len(play_records[SessionMode.SaturateFactor]))
+    load_all_play_records()
+    print(len(play_records[SessionMode.Latency]))

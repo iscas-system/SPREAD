@@ -40,6 +40,24 @@ def model_name_spec(model_name: ModelName):
         ModelName.MobileNet: {
             "label": "MobileNetV2"
         },
+        ModelName.MobileNetV2: {
+            "label": "MobileNetV2"
+        },
+        ModelName.SqueezeNet: {
+            "label": "SqueezeNet"
+        },
+        ModelName.ShuffleNet: {
+            "label": "ShuffleNet"
+        },
+        ModelName.HarDNet: {
+            "label": "HarDNet"
+        },
+        ModelName.MEALV2: {
+            "label": "MEALV2"
+        },
+        ModelName.GhostNet: {
+            "label": "GhostNet"
+        },
         ModelName.InceptionV3: {
             "label": "InceptionV3"
         },

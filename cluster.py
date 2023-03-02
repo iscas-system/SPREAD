@@ -365,6 +365,12 @@ class Assignments:
         add(other.GPU_type_to_task_assignments)
         return Assignments(cluster_config=self.cluster_config, GPU_type_to_task_assignments=GPU_type_to_task_assignments)
 
+    def check_validity(self):
+        for _, task_assignments in self.GPU_ID_to_task_assignments.items():
+            for task_assignment in task_assignments:
+                assert task_assignment.comp_req > 0
+                assert task_assignment.memory > 0
+
     def clone(self) -> 'Assignments':
         return self.merge(Assignments(cluster_config=self.cluster_config))
 

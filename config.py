@@ -21,6 +21,7 @@ class Config:
         self.simulating_method: SimulatingMethod = SimulatingMethod(d.get("simulating_method", "Trace"))
         self.simulating_method_config: Dict = d.get("simulating_method_config", dict())
         self.multiprocessing: bool = d["multiprocessing"]
+        self.log_to_stdout: bool = d["log_to_stdout"]
 
         self.data_source_configs: Dict[str, 'DataSourceConfig'] = dict()
         for cn, c in d["data_source_configs"].items():

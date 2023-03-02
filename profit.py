@@ -95,6 +95,7 @@ class ProfitThroughput(ProfitCalculator):
                or (comp_req is not None and worker_count is not None and cross_node is not None)
 
         if cluster_config is not None and task_assignments is not None:
+            worker_count = len(task_assignments)
             GPU_ID_to_node_id = cluster_config.GPU_ID_to_node_id
             node_ids = set()
             comp_req = None
@@ -106,7 +107,7 @@ class ProfitThroughput(ProfitCalculator):
             assert comp_req is not None
             cross_node = len(node_ids) > 1
 
-        iteration_time_nano = data_source.job_iteration_time_nano(job_ID=job_ID, GPU_type=GPU_type, comp_req=comp_req, worker_count=len(task_assignments), cross_node=cross_node)
+        iteration_time_nano = data_source.job_iteration_time_nano(job_ID=job_ID, GPU_type=GPU_type, comp_req=comp_req, worker_count=worker_count, cross_node=cross_node)
         throughput_ratio = 1. * min_iteration_time_nano / iteration_time_nano
         return throughput_ratio
 

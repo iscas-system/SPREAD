@@ -5,6 +5,7 @@ from cluster import TaskAssignment, Assignments
 from object import CompCapacity, GPUType, Task, PriorityType, Job
 from scheduler import Scheduler
 from schedulers.sorter import Sorter
+from .best_fit import BestFitScheduler
 import numpy as np
 from collections import namedtuple
 
@@ -17,6 +18,9 @@ class TiresiasScheduler(Scheduler):
 
     def do_assign(self, preemptive: bool, now: int, done_jobs_between_preemption: Set[Job]) -> Tuple[Assignments, Optional[Any]]:
         GPU_ID_to_task_assignments, job_IDs = self.prepare_assign_ctx(preemptive)
+        for GPU_ID in self.cluster.cluster_config.GPU_IDs:
+            if GPU_ID not in GPU_ID_to_task_assignments:
+                GPU_ID_to_task_assignments[GPU_ID] = set()
         duration = now - self.last_schedule
         self.last_schedule = now
         for job_ID, task_assignments in self.cluster.assignments.job_ID_to_task_assignments.items():
@@ -27,22 +31,33 @@ class TiresiasScheduler(Scheduler):
         for job_ID in job_IDs:
             JAS_list.append(JAS(job_ID=job_ID, attained_service=self.job_attained_service[job_ID]))
         JAS_list.sort(key=lambda jas: jas.attained_service)
-        JAS_list = JAS_list[:300]
+        JAS_list = JAS_list[:128]
+        job_IDs = [j.job_ID for j in JAS_list]
+        empty_GPU_count = 0
+        for GPU_ID, task_assignments in GPU_ID_to_task_assignments.items():
+            if len(task_assignments) == 0:
+                empty_GPU_count += 1
+        if len(job_IDs) <= empty_GPU_count:
+            return BestFitScheduler.best_fit_assign(self, GPU_type=self.GPU_type,
+                                                    GPU_ID_to_task_assignments=GPU_ID_to_task_assignments,
+                                                    job_IDs=job_IDs), None
+
         GPU_ID_comp_mem_type = namedtuple(typename="GPU_ID_comp", field_names=["GPU_ID", "comp", "mem"])
         GPU_mem = GPUType.normalized_memory(GPU_type=self.GPU_type)
         for jas in JAS_list:
             job_ID = jas.job_ID
             GPU_ID_to_remain_comp_mem = self.GPU_remain_comp_mem(GPU_ID_to_task_assignments=GPU_ID_to_task_assignments)
             job_spec = self.data_source.get_job_spec(job_ID)
-            comp_req = self.data_source.job_maximized_performance_comp(job_ID=job_ID, worker_count=job_spec.plan_worker_count, GPU_type=self.GPU_type, cross_node=False)
+            worker_count = 1
+            comp_req, _ = self.data_source.job_maximized_performance_comp(job_ID=job_ID, worker_count=worker_count, GPU_type=self.GPU_type, cross_node=False)
             remain_GPU_ID_comp_mem_list: List[GPU_ID_comp_mem_type] = list()
             for GPU_ID in self.cluster.cluster_config.GPU_IDs:
                 remain_comp_mem = GPU_ID_to_remain_comp_mem[GPU_ID]
                 comp, mem = remain_comp_mem
                 remain_GPU_ID_comp_mem_list.append(GPU_ID_comp_mem_type(GPU_ID, comp, mem))
             remain_GPU_ID_comp_mem_list.sort(key=lambda t: t[0], reverse=True)
-            window_size = job_spec.plan_worker_count
-            _, task_mem = self.data_source.get_job_task_memory(job_ID, job_spec.plan_worker_count)
+            window_size = worker_count
+            _, task_mem = self.data_source.get_job_task_memory(job_ID, worker_count)
             comp_enough_GPU_ID_com_mem_slice_list: List[Tuple[List[GPU_ID_comp_mem_type], float]] = list()
             for i in range(len(remain_GPU_ID_comp_mem_list) - window_size + 1):
                 comp_enough = True
@@ -65,13 +80,13 @@ class TiresiasScheduler(Scheduler):
             if len(comp_enough_GPU_ID_com_mem_slice_list) == 0:
                 continue
             slice_GPU_ID_comp_mem = comp_enough_GPU_ID_com_mem_slice_list[0][0]
-            for task_idx in range(job_spec.plan_worker_count):
+            for task_idx in range(worker_count):
                 GPU_ID_comp_mem = slice_GPU_ID_comp_mem[task_idx]
                 GPU_ID, _, _ = GPU_ID_comp_mem
                 task_assignment = TaskAssignment(GPU_ID=GPU_ID,
                                                  GPU_type=self.GPU_type,
                                                  task=Task(job_ID=job_ID, task_idx=task_idx),
-                                                 comp_req=job_spec.plan_comp,
+                                                 comp_req=comp_req,
                                                  memory=task_mem)
                 GPU_ID_to_task_assignments[GPU_ID].add(task_assignment)
         assignments = Assignments.from_GPU_ID_to_task_assignments(

@@ -5,8 +5,8 @@ from typing import Optional, Dict
 
 GBi = 1024 * 1024 * 1024  # 1024 * 1024 * 1024 B
 
-CompCapacity = 20
-MemoryUnit = GBi // 2
+CompCapacity = 10
+MemoryUnit = GBi // 1
 
 def to_normalized_memory(real_memory):
     if real_memory % MemoryUnit == 0:
@@ -243,6 +243,7 @@ class SchedulerEnum(Enum):
     BestFit = "BestFit"
     Gavel = "Gavel"
     Kubernetes = "Kubernetes"
+    AFS = "AFS"
 
 
 class SimulatingMethod(Enum):

@@ -35,7 +35,7 @@ def get_time_series_func(extract_item: Callable[[AssignmentStatistics], Any],
 
 
 def time_series_profit(scheduler_to_record: Dict[SchedulerName, PlayRecord], time_interval=60):
-    return get_time_series_func(lambda assignment_stats: 20. - assignment_stats.profit, scheduler_to_record, time_interval)
+    return get_time_series_func(lambda assignment_stats: assignment_stats.profit * 2, scheduler_to_record, time_interval)
 
 
 def time_series_comp_util(scheduler_to_record: Dict[SchedulerName, PlayRecord], time_interval=60):
@@ -56,22 +56,19 @@ def time_series_deployed_count(scheduler_to_record: Dict[SchedulerName, PlayReco
 def plot_avg_time_series_profit_bar():
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 28})
-    schedulers = [SchedulerName.MMKP_strict,
-                  SchedulerName.MMKP_strict_no_split,
+    schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
                   SchedulerName.Tiresias,
-                  SchedulerName.Kubernetes]
-    cluster_name = ClusterName.Cluster10GPUs
-    max_profit = cluster_name_to_spec(cluster_name=cluster_name)["total_profit"]
+                  SchedulerName.Kubernetes,
+                  SchedulerName.AFS,
+                  SchedulerName.SPREAD_PRIME]
     fig, ax = plt.subplots(figsize=(16, 4))
     data_source_names = [
-        DataSourceName.DataSourceAli,
-        DataSourceName.DataSourceAliFixNew,
-        DataSourceName.DataSourceAliUni,
-        DataSourceName.DataSourcePhi,
-        DataSourceName.DataSourcePhiFixNew,
-        DataSourceName.DataSourcePhiUni
+        DataSourceName.DataSourceAliDyn,
+        DataSourceName.DataSourceAliSta,
+        DataSourceName.DataSourcePhiDyn,
+        DataSourceName.DataSourcePhiSta,
     ]
     X = np.arange(len(data_source_names))
     width = 0.1
@@ -81,7 +78,7 @@ def plot_avg_time_series_profit_bar():
         for scheduler in schedulers:
             play_record = extract_play_record(mode=SessionMode.Trace,
                                               data_source_name=data_source_name,
-                                              cluster_name=ClusterName.Cluster10GPUs,
+                                              cluster_name=ClusterName.Cluster64,
                                               scheduler_name=scheduler)
             assert len(play_record) == 1
             play_record = play_record[0]
@@ -89,58 +86,53 @@ def plot_avg_time_series_profit_bar():
         scheduler_to_profits = time_series_profit(scheduler_to_record)
         for scheduler in schedulers:
             profits = scheduler_to_profits[scheduler]
-            profits = list(filter(lambda profit: profit < 16, profits))
-            schedulers_to_avg_profits[scheduler].append(np.mean(profits))
+            profits = list(filter(lambda profit: profit > 32, profits))
+            schedulers_to_avg_profits[scheduler].append(2 * np.mean(profits))
 
     hatch = "/"
-    bottom = 0
     for i, scheduler in enumerate(schedulers):
         avg_profits = schedulers_to_avg_profits[scheduler]
         spec = scheduler_to_spec(scheduler_name=scheduler)
-        print(f"{scheduler}: ", (np.array(avg_profits)) / max_profit)
+        print(f"{scheduler}: ", np.array(avg_profits))
         ax.bar(
             X + i * width,
-            np.array(avg_profits) / max_profit - bottom,
+            np.array(avg_profits),
             # edgecolor=edgecolor,
             width=width,
             color=spec["color"],
             label=spec["label"],
-            hatch=hatch,
-            bottom=bottom
+            hatch=hatch
         )
     ax.set_xticks(X + (width / 2) * (len(schedulers) - 1),
                   [data_source_to_spec(data_source_name=dn)["label"] for dn in data_source_names])
-    ax.spines['bottom'].set_position(('data', bottom))
-    ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
-    ax.set_yticks([0, 0.25, 0.5])
+    # ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
+    y_major_loc = plt_ticker.MultipleLocator(base=30)
+    ax.yaxis.set_major_locator(y_major_loc)
     fig.tight_layout()
     fig.legend(loc=(0.2, 0.7), ncol=len(schedulers)//2)
     fig.subplots_adjust(top=0.7)
-    ax.set_ylabel('Avg. RFD')
+    ax.set_ylabel('Avg. $\hat{T}$')
     ax.set_xlabel('Workloads')
-    # ax.xaxis.grid(True)
     ax.yaxis.grid(True)
-    save_fig(fig, output_path(f"time_series_10GPUs_avg_profit_bar.pdf"))
+    save_fig(fig, output_path(f"avg_profit_bar.pdf"))
     mpl.rcParams.update({'font.size': original_fontsize})
 
 
 def plot_makespan_bar():
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 28})
-    schedulers = [SchedulerName.MMKP_strict,
-                  SchedulerName.MMKP_strict_no_split,
+    schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
                   SchedulerName.Tiresias,
-                  SchedulerName.Kubernetes]
+                  SchedulerName.Kubernetes,
+                  SchedulerName.AFS,
+                  SchedulerName.SPREAD_PRIME]
+    cluster_name = ClusterName.Cluster64
     fig, ax = plt.subplots(figsize=(16, 4))
     data_source_names = [
-        DataSourceName.DataSourceAli,
-        DataSourceName.DataSourceAliFixNew,
-        DataSourceName.DataSourceAliUni,
-        DataSourceName.DataSourcePhi,
-        DataSourceName.DataSourcePhiFixNew,
-        DataSourceName.DataSourcePhiUni
+        DataSourceName.DataSourceAliSta,
+        DataSourceName.DataSourcePhiSta,
     ]
     X = np.arange(len(data_source_names))
     width = 0.1
@@ -150,17 +142,17 @@ def plot_makespan_bar():
             play_record = extract_play_record(
                 mode=SessionMode.Trace,
                 data_source_name=data_source_name,
-                cluster_name=ClusterName.Cluster10GPUs,
+                cluster_name=cluster_name,
                 scheduler_name=scheduler)
             assert len(play_record) == 1
             play_record = play_record[0]
             max_completion_time = np.max([done_job.completion_time for done_job in play_record.done_records.values()])
             schedulers_to_makespans[scheduler].append(max_completion_time)
 
-    bottom = 0.9
+    bottom = 0.5
     hatch = "/"
     for i, scheduler in enumerate(schedulers):
-        base = schedulers_to_makespans[SchedulerName.MMKP_strict]
+        base = schedulers_to_makespans[SchedulerName.SPREAD]
         makespans = schedulers_to_makespans[scheduler]
         makespans_normalized = np.array(makespans) / np.array(base)
         spec = scheduler_to_spec(scheduler_name=scheduler)
@@ -185,7 +177,76 @@ def plot_makespan_bar():
     ax.set_xlabel('Workloads')
     ax.yaxis.grid(True)
     ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
-    save_fig(fig, output_path(f"time_series_10GPUs_makespan_bar.pdf"))
+    save_fig(fig, output_path(f"makespan_bar.pdf"))
+    mpl.rcParams.update({'font.size': original_fontsize})
+
+
+def plot_JCT_bar():
+    original_fontsize = mpl.rcParams["font.size"]
+    mpl.rcParams.update({'font.size': 28})
+    schedulers = [SchedulerName.SPREAD,
+                  SchedulerName.KubeShare,
+                  SchedulerName.Gavel,
+                  SchedulerName.Tiresias,
+                  # SchedulerName.Kubernetes,
+                  SchedulerName.AFS,
+                  SchedulerName.SPREAD_PRIME]
+    fig, ax = plt.subplots(figsize=(16, 4))
+    cluster_name = ClusterName.Cluster64
+    data_source_names = [
+        DataSourceName.DataSourceAliDyn,
+        DataSourceName.DataSourceAliSta,
+        DataSourceName.DataSourcePhiDyn,
+        DataSourceName.DataSourcePhiSta,
+    ]
+    X = np.arange(len(data_source_names))
+    width = 0.1
+    schedulers_to_JCTs = defaultdict(list)
+    for i, data_source_name in enumerate(data_source_names):
+        for scheduler in schedulers:
+            play_record = extract_play_record(
+                mode=SessionMode.Trace,
+                data_source_name=data_source_name,
+                cluster_name=cluster_name,
+                scheduler_name=scheduler)
+            assert len(play_record) == 1
+            play_record = play_record[0]
+            JCTs = list()
+            for done_job in play_record.done_records.values():
+                JCT = done_job.completion_time - done_job.submit_time
+                JCTs.append(JCT)
+            avg_jct = np.mean(JCTs)
+            schedulers_to_JCTs[scheduler].append(avg_jct)
+
+    bottom = 0.5
+    hatch = "/"
+    for i, scheduler in enumerate(schedulers):
+        base = schedulers_to_JCTs[SchedulerName.SPREAD]
+        avgJCTs = schedulers_to_JCTs[scheduler]
+        avgJCTs_normalized = np.array(avgJCTs) / np.array(base)
+        spec = scheduler_to_spec(scheduler_name=scheduler)
+        print(f"{scheduler}: ", np.array(avgJCTs_normalized))
+        ax.bar(
+            X + i * width,
+            np.array(avgJCTs_normalized) - bottom,
+            width=width,
+            color=spec["color"],
+            label=spec["label"],
+            hatch=hatch,
+            bottom=bottom
+        )
+    ax.spines['bottom'].set_position(('data', bottom))
+    ax.set_xticks(X + (width / 2) * (len(schedulers) - 1),
+                  [data_source_to_spec(data_source_name=dn)["label"] for dn in data_source_names])
+    ax.set_yticks([1, 1.5, 2.0])
+    fig.tight_layout()
+    fig.legend(loc=(0.2, 0.7), ncol=len(schedulers)//2)
+    fig.subplots_adjust(top=0.7)
+    ax.set_ylabel('Norm. Avg. JCT')
+    ax.set_xlabel('Workloads')
+    ax.yaxis.grid(True)
+    ax.yaxis.set_major_formatter(plt_ticker.FuncFormatter('{0:.0%}'.format))
+    save_fig(fig, output_path(f"JCT_bar.pdf"))
     mpl.rcParams.update({'font.size': original_fontsize})
 
 
@@ -252,22 +313,23 @@ def plot_time_series_item_for_record(ax, time_series_func, data_source_name: Dat
 def plot_time_series_item_for_all_records(time_series_func, cluster_name, filename, max_item, y_label, yticks=None):
     original_fontsize = mpl.rcParams["font.size"]
     mpl.rcParams.update({'font.size': 32})
-    schedulers = [SchedulerName.MMKP_strict,
-                  SchedulerName.MMKP_strict_no_split,
+    schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
                   SchedulerName.Tiresias,
-                  SchedulerName.Kubernetes]
-    data_sources = [
-        DataSourceName.DataSourceAli,
-        DataSourceName.DataSourceAliFixNew,
-        DataSourceName.DataSourcePhi,
-        DataSourceName.DataSourcePhiUni
+                  # SchedulerName.Kubernetes,
+                  SchedulerName.AFS,
+                  SchedulerName.SPREAD_PRIME]
+    data_source_names = [
+        DataSourceName.DataSourceAliDyn,
+        DataSourceName.DataSourceAliSta,
+        DataSourceName.DataSourcePhiDyn,
+        DataSourceName.DataSourcePhiSta,
     ]
     col = 2
     fig, axes = plt.subplots(2, col, figsize=(24, 14))
     handles = None
-    for i, data_source_name in enumerate(data_sources):
+    for i, data_source_name in enumerate(data_source_names):
         scheduler_to_record = dict()
         for scheduler in schedulers:
             play_record = extract_play_record(mode=SessionMode.Trace,
@@ -293,25 +355,28 @@ def plot_time_series_item_for_all_records(time_series_func, cluster_name, filena
 
 
 def plot_time_series_items_for_all_records():
-    plot_time_series_item_for_all_records(time_series_func=time_series_profit, cluster_name=ClusterName.Cluster10GPUs,
-                                          filename="time_series_10GPUs_profits.pdf", y_label="RFD", max_item=20, yticks=[0, 0.25, 0.5, 0.75, 1])
+    plot_time_series_item_for_all_records(time_series_func=time_series_profit, cluster_name=ClusterName.Cluster64,
+                                          filename="time_series_profits.pdf", y_label=r"$\hat{T}_{total}$", max_item=None, yticks=[0, 30, 60, 90, 120])
     # plot_time_series_item_for_all_records(time_series_func=time_series_mem_util, cluster_name=ClusterName.Cluster10GPUs,
     #                                       filename="time_series_10GPUs_mem.pdf", y_label="Memory Utilization",
     #                                       max_item=1)
-    # plot_time_series_item_for_all_records(time_series_func=time_series_comp_util,
-    #                                       cluster_name=ClusterName.Cluster10GPUs,
-    #                                       filename="time_series_10GPUs_comp.pdf", y_label="Computation Utilization",
-    #                                       max_item=1050)
+    plot_time_series_item_for_all_records(time_series_func=time_series_comp_util,
+                                          cluster_name=ClusterName.Cluster64,
+                                          filename="time_series_comp.pdf", y_label="GPU Utilization",
+                                          max_item=64 * 100)
     # plot_time_series_item_for_all_records(time_series_func=time_series_deployed_count,
-    #                                       cluster_name=ClusterName.Cluster10GPUs,
-    #                                       filename="time_series_10GPUs_placed_job_size.pdf", y_label="Placed Job Size",
+    #                                       cluster_name=ClusterName.Cluster64,
+    #                                       filename="time_series_placed_job_size.pdf", y_label="Placed Job Size",
     #                                       max_item=None)
 
 
 def main():
-    # plot_time_series_items_for_all_records()
+    LOAD_UTIL_CONFIG.LOAD_UTIL = True
+    load_all_play_records()
+    plot_time_series_items_for_all_records()
     plot_avg_time_series_profit_bar()
     plot_makespan_bar()
+    plot_JCT_bar()
 
 
 if __name__ == '__main__':

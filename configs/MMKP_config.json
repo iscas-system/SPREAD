@@ -4,6 +4,7 @@
   "session_id": "trace",
   "simulating_method": "Trace",
   "multiprocessing": false,
+  "log_to_stdout": true,
   "simulating_method_config": {
     "repeat": 1
   },
@@ -144,36 +145,36 @@
     "data_source_ali_static": {
       "data_range": [
         100,
-        2000
+        3000
       ],
       "init_job_data_seed": 1,
-      "job_count": 500,
+      "job_count": 1000,
       "comp_distribution": "all_100",
       "submit_at_beginning": true,
       "submit_table_path": "data/pai_job_submit_table.csv",
-      "submit_scale_factor": 1,
+      "submit_scale_factor": 5,
       "mono_job_data_path": "data/mono_data_SC"
     },
     "data_source_ali_trace": {
       "data_range": [
         100,
-        2000
+        3000
       ],
       "init_job_data_seed": 1,
-      "job_count": 500,
+      "job_count": 1000,
       "comp_distribution": "all_100",
       "submit_at_beginning": false,
       "submit_table_path": "data/pai_job_submit_table.csv",
-      "submit_scale_factor": 1,
+      "submit_scale_factor": 5,
       "mono_job_data_path": "data/mono_data_SC"
     },
     "data_source_phi_static": {
       "data_range": [
-        0,
-        2000
+        2300,
+        6000
       ],
       "init_job_data_seed": 1,
-      "job_count": 500,
+      "job_count": 1000,
       "comp_distribution": "all_100",
       "submit_at_beginning": true,
       "submit_table_path": "data/philly_job_submit_table.csv",
@@ -182,11 +183,11 @@
     },
     "data_source_phi_trace": {
       "data_range": [
-        0,
-        2000
+        2300,
+        6000
       ],
       "init_job_data_seed": 1,
-      "job_count": 500,
+      "job_count": 1000,
       "comp_distribution": "all_100",
       "submit_at_beginning": false,
       "submit_table_path": "data/philly_job_submit_table.csv",
@@ -195,7 +196,10 @@
     }
   },
   "enabled_data_source_configs": [
-    "data_source_ali_trace"
+    "data_source_ali_trace",
+    "data_source_phi_trace",
+    "data_source_ali_static",
+    "data_source_phi_static"
   ],
   "default_scheduling_preemptive_interval": 600,
   "schedulers": [
@@ -206,17 +210,37 @@
         "use_spread": true,
         "partition_strategy": "heuristic",
         "job_distributing_strategy": "heuristic",
-        "partition_size": 8
+        "partition_size": 6
       }
     },
     {
       "name": "MMKP_no_spread",
       "scheduler_enum": "MMKP",
       "config": {
-        "use_spread": true,
+        "use_spread": false,
         "partition_strategy": "heuristic",
         "job_distributing_strategy": "heuristic",
-        "partition_size": 8
+        "partition_size": 6
+      }
+    },
+    {
+      "name": "MMKP_RR_partition",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_spread": true,
+        "partition_strategy": "round",
+        "job_distributing_strategy": "heuristic",
+        "partition_size": 6
+      }
+    },
+    {
+      "name": "MMKP_RR_distribution",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "round",
+        "partition_size": 4
       }
     },
     {
@@ -226,7 +250,7 @@
         "use_spread": true,
         "partition_strategy": "round",
         "job_distributing_strategy": "round",
-        "partition_size": 8
+        "partition_size": 4
       }
     },
     {
@@ -261,6 +285,10 @@
     }
   ],
   "enabled_scheduler_names": [
-    "BestFit"
+    "MMKP",
+    "MMKP_no_spread",
+    "MMKP_RR_partition",
+    "MMKP_RR_distribution",
+    "MMKP_RR_partition_distribution"
   ]
 }

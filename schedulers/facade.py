@@ -11,6 +11,7 @@ from .tiresias import TiresiasScheduler
 from .best_fit import BestFitScheduler
 from .Gavel import GavelScheduler
 from .kubernetes import KubeScheduler
+from .AFS import AFSScheduler
 
 
 #                  name: str,
@@ -38,7 +39,8 @@ scheduler_init_funcs: Dict[SchedulerEnum, Optional[Callable[[
     SchedulerEnum.KubeShare: KubeShareScheduler,
     SchedulerEnum.BestFit: BestFitScheduler,
     SchedulerEnum.Gavel: GavelScheduler,
-    SchedulerEnum.Kubernetes: KubeScheduler
+    SchedulerEnum.Kubernetes: KubeScheduler,
+    SchedulerEnum.AFS: AFSScheduler
 }
 
 

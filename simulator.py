@@ -132,7 +132,7 @@ class Simulator:
                                                                            profit_calculator=get_profit_calculator(
                                                                                scheduler.profit_enum))
 
-            self.snapshot(scheduler, session_id, iteration_idx=iteration, preemptive=is_preemptive_interval)
+            # self.snapshot(scheduler, session_id, iteration_idx=iteration, preemptive=is_preemptive_interval)
 
             running_status = scheduler.cluster.running_status(data_source=self.data_source)
 
@@ -209,7 +209,7 @@ class Simulator:
                                                                            profit_calculator=get_profit_calculator(
                                                                                scheduler.profit_enum))
 
-            self.snapshot(scheduler, session_id, iteration_idx=i, preemptive=True)
+            # self.snapshot(scheduler, session_id, iteration_idx=i, preemptive=True)
 
             running_status = scheduler.cluster.running_status(data_source=self.data_source)
 

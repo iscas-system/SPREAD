@@ -43,7 +43,7 @@ def simulator_process(config_path: str, data_source_config_name: str, cluster_co
     c = get_config(config_path)
     time_str = datetime.datetime.now().strftime(
         f"%Y-%m-%d-%H-%M-%S")
-    set_logging(f"Player_{c.session_id}_{cluster_config_name}_{data_source_config_name}_{scheduler_name}_{time_str}.log")
+    set_logging(c.log_to_stdout, f"Player_{c.session_id}_{cluster_config_name}_{data_source_config_name}_{scheduler_name}_{time_str}.log")
     data_source_config = c.data_source_configs[data_source_config_name]
     cluster_config = c.cluster_configs[cluster_config_name]
     sim = Simulator(data_source_config=data_source_config, cluster_config=cluster_config, scheduler_name=scheduler_name)
