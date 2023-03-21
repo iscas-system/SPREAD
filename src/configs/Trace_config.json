@@ -253,8 +253,8 @@
       "config": {}
     },
     {
-      "name": "Tiresias",
-      "scheduler_enum": "Tiresias",
+      "name": "Hydra",
+      "scheduler_enum": "Hydra",
       "config": {}
     },
     {
@@ -283,7 +283,7 @@
     "MMKP_no_spread",
     "KubeShare",
     "Gavel",
-    "Tiresias",
+    "Hydra",
     "AFS",
     "Kubernetes"
   ]

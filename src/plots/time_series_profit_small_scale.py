@@ -80,7 +80,7 @@ def plot_avg_time_series_profit_bar(ax):
     schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
-                  SchedulerName.Tiresias,
+                  SchedulerName.Hydra,
                   SchedulerName.AFS,
                   SchedulerName.Kubernetes,
                   ]
@@ -136,7 +136,7 @@ def plot_avg_time_series_util_bar(ax):
     schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
-                  SchedulerName.Tiresias,
+                  SchedulerName.Hydra,
                   SchedulerName.AFS,
                   SchedulerName.Kubernetes,
                   ]
@@ -195,7 +195,7 @@ def plot_makespan_bar(ax):
     schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
-                  SchedulerName.Tiresias,
+                  SchedulerName.Hydra,
                   SchedulerName.AFS,
                   SchedulerName.Kubernetes,
                   ]
@@ -253,7 +253,7 @@ def plot_JCT_bar(ax):
     schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
-                  SchedulerName.Tiresias,
+                  SchedulerName.Hydra,
                   SchedulerName.AFS,
                   SchedulerName.Kubernetes,
                   ]
@@ -397,7 +397,7 @@ def plot_time_series_item_for_all_records(time_series_func, cluster_name, filena
     schedulers = [SchedulerName.SPREAD,
                   SchedulerName.KubeShare,
                   SchedulerName.Gavel,
-                  SchedulerName.Tiresias,
+                  SchedulerName.Hydra,
                   SchedulerName.AFS,
                   SchedulerName.Kubernetes,
                   SchedulerName.SPREAD_PRIME]

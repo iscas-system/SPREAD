@@ -240,7 +240,7 @@ class SchedulerEnum(Enum):
     MMKP = "MMKP"
     RoundRobin = "RoundRobin"
     BinPacking = "BinPacking"
-    Tiresias = "Tiresias"
+    Hydra = "Hydra"
     Themis = "Themis"
     Optimus = "Optimus"
     KubeShare = "KubeShare"

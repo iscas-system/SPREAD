@@ -232,8 +232,8 @@
       "config": {}
     },
     {
-      "name": "Tiresias",
-      "scheduler_enum": "Tiresias",
+      "name": "Hydra",
+      "scheduler_enum": "Hydra",
       "config": {}
     },
     {
@@ -258,6 +258,6 @@
     }
   ],
   "enabled_scheduler_names": [
-    "KubeShare", "Gavel", "Tiresias", "AFS", "Kubernetes"
+    "KubeShare", "Gavel", "Hydra", "AFS", "Kubernetes"
   ]
 }

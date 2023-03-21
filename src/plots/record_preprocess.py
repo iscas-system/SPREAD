@@ -36,6 +36,7 @@ class SchedulerName(Enum):
     BestFit = "BestFit"
     AFS = "AFS"
     Tiresias = "Tiresias"
+    Hydra = "Hydra"
     Gavel = "Gavel"
     Kubernetes = "Kubernetes"
 
@@ -257,6 +258,13 @@ def scheduler_to_spec(scheduler_name: SchedulerName):
         },
         SchedulerName.Tiresias: {
             "label": "Tiresias",
+            "color": colors[4],
+            "zorder": 6,
+            "linestyle": "solid",
+            "linewidth": 4,
+        },
+        SchedulerName.Hydra: {
+            "label": "Hydra",
             "color": colors[4],
             "zorder": 6,
             "linestyle": "solid",

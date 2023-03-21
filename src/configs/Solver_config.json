@@ -252,8 +252,8 @@
       "config": {}
     },
     {
-      "name": "Tiresias",
-      "scheduler_enum": "Tiresias",
+      "name": "Hydra",
+      "scheduler_enum": "Hydra",
       "config": {}
     },
     {
@@ -285,7 +285,7 @@
     "MMKP_RR_partition_distribution",
     "KubeShare",
     "Gavel",
-    "Tiresias",
+    "Hydra",
     "AFS",
     "Kubernetes"
   ]

@@ -106,7 +106,7 @@ def plot_random_placement_boxes(filename: str,
         schedulers = [SchedulerName.SPREAD,
                       SchedulerName.KubeShare,
                       SchedulerName.Gavel,
-                      SchedulerName.Tiresias,
+                      SchedulerName.Hydra,
                       SchedulerName.AFS,
                       SchedulerName.Kubernetes,
                       SchedulerName.SPREAD_PRIME]
@@ -353,7 +353,7 @@ def plot_merged_random_placement_boxes(filename: str, schedulers=None, util_loca
         schedulers = [SchedulerName.SPREAD,
                       SchedulerName.KubeShare,
                       SchedulerName.Gavel,
-                      SchedulerName.Tiresias,
+                      SchedulerName.Hydra,
                       SchedulerName.AFS,
                       SchedulerName.Kubernetes,
                       SchedulerName.SPREAD_PRIME]

@@ -21,6 +21,17 @@ conda env create -n SPREAD -f environment.yml
 
 Note that we do not provide a docker image to run SPREAD since the academic license of gurobi is not available in container-based environment.
 
+## Step-by-step Deployment
+
+1. Prepare a Linux/MacOS-based server/PC.
+2. Install Gurobi optimizer v10.0.1 and prepare a license at the default location.
+3. Install Anaconda.
+4. Clone the repository at https://github.com/dos-lab/SPREAD.
+5. Enter the root directory of the repository.
+6. Create a conda environment named "SPREAD" using the provided "environment.yml" file. (`conda env create -n SPREAD -f environment.yml`)
+7. Activate the "SPREAD" environment. (`conda activate SPREAD`)
+8. Run the command `python main.py --help` to see further instructions on how to run experiments or draw plots.
+
 ## Directory Structure
 
 The directory structure of the repository is as follows:
