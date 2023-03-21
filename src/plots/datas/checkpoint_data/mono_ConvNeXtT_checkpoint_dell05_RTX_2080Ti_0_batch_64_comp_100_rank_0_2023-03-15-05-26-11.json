@@ -1,0 +1,85 @@
+{
+	"model_name": "ConvNeXtT",
+	"batch_size": 64,
+	"duration_sec": 20,
+	"mode": "checkpoint",
+	"is_DDP": true,
+	"process_group_backend": "gloo",
+	"world_size": 1,
+	"rank": 0,
+	"local_rank": 0,
+	"device_type": "gpu",
+	"master_addr": "133.133.135.75",
+	"master_port": 39920,
+	"iteration_count": 11,
+	"iteration_intervals": [
+		184072192,
+		178547456,
+		3007039232,
+		1852712448,
+		2390594304,
+		2285003520,
+		2531939328,
+		1896771072,
+		2613588736,
+		2299203328,
+		2168995072
+	],
+	"iteration_intervals_avg": 2299250176.0,
+	"iteration_intervals_avg_second": 2.299250176,
+	"total_time_ns": 21409474048,
+	"total_time_second": 21,
+	"mem_infos": [
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		],
+		[
+			2660237312,
+			11811160064
+		]
+	],
+	"utilization": [
+		72,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0
+	],
+	"computation_proportion": 100,
+	"extra_dict": {
+		"checkpoint_size": 114452157
+	}
+}

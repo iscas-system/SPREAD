@@ -1,0 +1,304 @@
+{
+  "license_path": null,
+  "use_default_license": true,
+  "session_id": "latency",
+  "simulating_method": "RandomPlacement",
+  "multiprocessing": false,
+  "log_to_stdout": true,
+  "simulating_method_config": {
+    "repeat": 10,
+    "job_size": 150
+  },
+  "cluster_configs": {
+    "cluster_64": {
+      "node_type": {
+        "8GPU_node": {
+          "RTX_2080Ti": 8
+        },
+        "4GPU_node": {
+          "RTX_2080Ti": 4
+        },
+        "2GPU_node": {
+          "RTX_2080Ti": 2
+        }
+      },
+      "nodes": {
+        "8GPU_node": 4,
+        "4GPU_node": 6,
+        "2GPU_node": 4
+      }
+    }
+  },
+  "enabled_cluster_configs": [
+    "cluster_64"
+  ],
+  "models": {
+    "MEALV2": {
+      "batch_sizes": [
+        64,
+        128,
+        256,
+        512
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "ShuffleNet": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128,
+        256
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "HarDNet": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128,
+        256
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "YoloV5S": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "MobileNetV2": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "YoloV5N": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "ResNet18": {
+      "batch_sizes": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    },
+    "ConvNeXtT": {
+      "batch_sizes": [
+        16,
+        32,
+        64
+      ],
+      "preemptive_overhead": [
+        0,
+        0
+      ]
+    }
+  },
+  "data_source_configs": {
+    "data_source_ali_static": {
+      "data_range": [
+        100,
+        3000
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 1000,
+      "comp_distribution": "all_100",
+      "submit_at_beginning": true,
+      "submit_table_path": "data/pai_job_submit_table.csv",
+      "submit_scale_factor": 5,
+      "mono_job_data_path": "data/mono_data_SC"
+    },
+    "data_source_ali_trace": {
+      "data_range": [
+        100,
+        3000
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 1000,
+      "comp_distribution": "all_100",
+      "submit_at_beginning": false,
+      "submit_table_path": "data/pai_job_submit_table.csv",
+      "submit_scale_factor": 5,
+      "mono_job_data_path": "data/mono_data_SC"
+    },
+    "data_source_phi_static": {
+      "data_range": [
+        2300,
+        6000
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 1000,
+      "comp_distribution": "all_100",
+      "submit_at_beginning": true,
+      "submit_table_path": "data/philly_job_submit_table.csv",
+      "submit_scale_factor": 1,
+      "mono_job_data_path": "data/mono_data_SC"
+    },
+    "data_source_phi_trace": {
+      "data_range": [
+        2300,
+        6000
+      ],
+      "init_job_data_seed": 1,
+      "job_count": 1000,
+      "comp_distribution": "all_100",
+      "submit_at_beginning": false,
+      "submit_table_path": "data/philly_job_submit_table.csv",
+      "submit_scale_factor": 1,
+      "mono_job_data_path": "data/mono_data_SC"
+    }
+  },
+  "enabled_data_source_configs": [
+    "data_source_ali_static"
+  ],
+  "default_scheduling_preemptive_interval": 600,
+  "schedulers": [
+    {
+      "name": "MMKP_4",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 2
+      }
+    },
+    {
+      "name": "MMKP_5",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 3
+      }
+    },
+    {
+      "name": "MMKP_6",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 4
+      }
+    },
+    {
+      "name": "MMKP_7",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 5
+      }
+    },
+    {
+      "name": "MMKP_8",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 6
+      }
+    },
+    {
+      "name": "MMKP_9",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 7
+      }
+    },
+    {
+      "name": "MMKP_10",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 8
+      }
+    },
+    {
+      "name": "MMKP_11",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 9
+      }
+    },
+    {
+      "name": "MMKP_12",
+      "scheduler_enum": "MMKP",
+      "config": {
+        "timeout": 120,
+        "use_spread": true,
+        "partition_strategy": "heuristic",
+        "job_distributing_strategy": "heuristic",
+        "ps": 10
+      }
+    }
+  ],
+  "enabled_scheduler_names": [
+    "MMKP_4",
+    "MMKP_5",
+    "MMKP_6",
+    "MMKP_7",
+    "MMKP_8",
+    "MMKP_9",
+    "MMKP_10",
+    "MMKP_11",
+    "MMKP_12"
+  ]
+}

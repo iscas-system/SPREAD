@@ -1,0 +1,85 @@
+{
+	"model_name": "InceptionV3",
+	"batch_size": 64,
+	"duration_sec": 20,
+	"mode": "checkpoint",
+	"is_DDP": true,
+	"process_group_backend": "gloo",
+	"world_size": 1,
+	"rank": 0,
+	"local_rank": 0,
+	"device_type": "gpu",
+	"master_addr": "133.133.135.75",
+	"master_port": 39920,
+	"iteration_count": 11,
+	"iteration_intervals": [
+		219213056,
+		229665536,
+		2620594688,
+		3149660416,
+		1850846464,
+		2179773184,
+		2438976256,
+		1559646720,
+		2370653184,
+		1627684352,
+		2605974016
+	],
+	"iteration_intervals_avg": 2130451285.3333333,
+	"iteration_intervals_avg_second": 2.1304512853333333,
+	"total_time_ns": 20853496064,
+	"total_time_second": 20,
+	"mem_infos": [
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		],
+		[
+			1171259392,
+			11811160064
+		]
+	],
+	"utilization": [
+		83,
+		0,
+		0,
+		2,
+		0,
+		0,
+		0,
+		0,
+		2
+	],
+	"computation_proportion": 100,
+	"extra_dict": {
+		"checkpoint_size": 109025787
+	}
+}
